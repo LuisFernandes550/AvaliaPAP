@@ -1,3 +1,6 @@
+# Dados locais (alunos, avaliações, relatórios) — não versionar
+data/
+
 # Segredos — nunca commitar
 .env
 
