@@ -77,6 +77,15 @@ def garantir_acta() -> bool:
     return True
 
 
+def _repor_acta_modelo() -> bool:
+    """Substitui a Acta de trabalho por uma cópia limpa do modelo."""
+    if not ACTA_MODELO_PATH.exists():
+        return garantir_acta()
+    ACTA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ACTA_MODELO_PATH, ACTA_PATH)
+    return True
+
+
 def _normalizar_nome(nome: str) -> str:
     if not nome:
         return ""
@@ -190,6 +199,14 @@ def _mapear_colunas_avaliacao(wb, ws, ws_valores) -> dict[str, int]:
     return mapa
 
 
+def _limpar_notas_folha_avaliacao(ws, col_inicio: int, col_fim: int) -> None:
+    """Remove notas existentes nas colunas de alunos antes de exportar."""
+    linhas = _linhas_sync()
+    for col in range(col_inicio, col_fim + 1):
+        for linha in linhas:
+            ws.cell(linha, col, None)
+
+
 def _preencher_folha_avaliacao(
     wb,
     ws,
@@ -222,10 +239,11 @@ def _preencher_folha_avaliacao(
         colunas_aluno[aluno.id] = col
         av = avaliacoes.get(aluno.id, {})
         for linha, criterio in linhas.items():
-            if criterio not in av:
-                continue
-            ws.cell(linha, col, int(av[criterio].nota))
-            exportados += 1
+            if criterio in av:
+                ws.cell(linha, col, int(av[criterio].nota))
+                exportados += 1
+            else:
+                ws.cell(linha, col, None)
 
     return exportados, colunas_aluno, avisos
 
@@ -403,7 +421,7 @@ def sincronizar_acta(
     - Folhas individuais: uma por aluno (reutilizando os separadores existentes)
     """
     avisos: list[str] = []
-    if not garantir_acta():
+    if not _repor_acta_modelo():
         avisos.append(
             f"Ficheiro Acta não encontrado. Modelo em falta: {ACTA_MODELO_PATH}."
         )
@@ -429,12 +447,20 @@ def sincronizar_acta(
         nome_folha_av = ws_av.title
         nome_folha_aux = ws_aux.title
 
+        ultima_col = max(
+            ws_av.max_column,
+            ws_av_valores.max_column,
+            PRIMEIRA_COLUNA_ALUNO,
+        )
+        _limpar_notas_folha_avaliacao(ws_av, PRIMEIRA_COLUNA_ALUNO, ultima_col)
+
+        _preencher_folha_auxiliar(ws_aux, alunos_ordem)
+
         exportados, colunas_aluno, avisos_av = _preencher_folha_avaliacao(
             wb, ws_av, ws_av_valores, alunos_ordem, avaliacoes
         )
         avisos.extend(avisos_av)
 
-        _preencher_folha_auxiliar(ws_aux, alunos_ordem)
         n_folhas = _sincronizar_folhas_aluno(
             wb, alunos_ordem, nome_folha_av, colunas_aluno, nome_folha_aux
         )

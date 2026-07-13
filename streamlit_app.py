@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, JsCode
 
 from app.ai_evaluator import avaliar_relatorio, ia_disponivel, resumir_capitulos
-from app.acta_excel import garantir_acta, sincronizar_acta
+from app.acta_excel import sincronizar_acta
 from app.app_settings import (
     TITULO_PADRAO,
     ConfiguracaoApp,
@@ -1906,6 +1906,7 @@ def _limpar_dados_secao_resumo(
     criterios = CRITERIOS_POR_SECAO[secao]
     removidos = storage.apagar_avaliacoes_criterios(aluno_ids, criterios)
     _limpar_session_notas_criterios(aluno_ids, criterios)
+    st.session_state.pop("_acta_bytes", None)
     return removidos
 
 
@@ -2014,10 +2015,6 @@ def _pagina_resumo(alunos: list[AlunoRelatorio]) -> None:
             st.success(msg)
 
         acta_bytes = st.session_state.get("_acta_bytes")
-        if acta_bytes is None:
-            garantir_acta()
-            if ACTA_PATH.exists():
-                acta_bytes = ACTA_PATH.read_bytes()
         if acta_bytes:
             st.download_button(
                 "Descarregar Acta",
