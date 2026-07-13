@@ -1,0 +1,20 @@
+# Dados locais (alunos, avaliações, relatórios)
+data/
+pap.db
+*.db
+
+# Segredos
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
