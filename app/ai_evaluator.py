@@ -56,8 +56,9 @@ def ollama_disponivel() -> bool:
 
 
 def _chave_gemini_valida(chave: str) -> bool:
-    """Chaves do Google AI Studio começam normalmente por AIza."""
-    return bool(chave) and chave.startswith("AIza")
+    """Chaves Gemini: legado AIza… ou novas chaves de autenticação AQ.…"""
+    chave = chave.strip()
+    return bool(chave) and (chave.startswith("AIza") or chave.startswith("AQ."))
 
 
 def _motores_prioridade() -> list[tuple[str, bool, str]]:
@@ -82,7 +83,7 @@ def ia_disponivel() -> tuple[bool, str]:
     if cfg["provider"] in ("gemini", "auto") and cfg["gemini_api_key"] and not _chave_gemini_valida(
         cfg["gemini_api_key"]
     ):
-        return False, "Chave Gemini inválida — use uma chave AIza de aistudio.google.com/apikey"
+        return False, "Chave Gemini inválida — obtenha em aistudio.google.com/apikey"
     if cfg["provider"] == "ollama" and (cfg["openai_api_key"] or cfg["gemini_api_key"]):
         return False, (
             "Ollama offline — use LLM_PROVIDER=auto no .env para recorrer a ChatGPT/Gemini"
@@ -462,16 +463,43 @@ def _chamar_ollama(prompt: str, max_tokens: int = 2500) -> Optional[str]:
 
 
 def _chamar_gemini(prompt: str) -> str:
-    import google.generativeai as genai
-
     cfg = _cfg_ia()
-    genai.configure(api_key=cfg["gemini_api_key"])
-    model = genai.GenerativeModel(cfg["gemini_model"])
-    response = model.generate_content(
-        prompt,
-        generation_config={"temperature": 0.3, "max_output_tokens": 2048},
+    api_key = cfg["gemini_api_key"]
+    model = cfg["gemini_model"]
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent"
     )
-    return response.text or ""
+    payload = json.dumps(
+        {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            dados = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        corpo = exc.read().decode("utf-8", errors="replace")
+        raise ValueError(f"Erro Gemini ({exc.code}): {corpo[:300]}") from exc
+
+    candidatos = dados.get("candidates") or []
+    if not candidatos:
+        raise ValueError("Gemini não devolveu resposta.")
+    partes = (candidatos[0].get("content") or {}).get("parts") or []
+    texto = "".join(p.get("text", "") for p in partes if isinstance(p, dict))
+    if not texto.strip():
+        raise ValueError("Gemini devolveu resposta vazia.")
+    return texto
 
 
 def _parsear_resposta(resposta: str, fonte: str) -> list[ResultadoCriterio]:
