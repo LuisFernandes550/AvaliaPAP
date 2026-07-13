@@ -66,6 +66,11 @@ DEFAULT_SAIDA = "Técnico de Gestão e Programação de Sistemas Informáticos"
 CELULAS_VALIDACAO = frozenset({"D10", "D11", "D12"})
 
 
+def _definir_celula(ws, linha: int, col: int, valor) -> None:
+    """Atribui valor à célula (openpyxl ignora None no 3.º argumento de cell())."""
+    ws.cell(linha, col).value = valor
+
+
 def garantir_acta() -> bool:
     """Copia o modelo da Acta para data/export/ se ainda não existir."""
     if ACTA_PATH.exists():
@@ -157,8 +162,8 @@ def _folhas_aluno(wb) -> list[str]:
 
 def _limpar_folha_auxiliar(ws, n_alunos: int) -> None:
     for linha in range(PRIMEIRA_LINHA_ALUNO_AUXILIAR, ws.max_row + 1):
-        ws.cell(linha, COLUNA_NOMES_AUXILIAR, None)
-        ws.cell(linha, COLUNA_TEMAS_AUXILIAR, None)
+        _definir_celula(ws, linha, COLUNA_NOMES_AUXILIAR, None)
+        _definir_celula(ws, linha, COLUNA_TEMAS_AUXILIAR, None)
     ws.cell(22, COLUNA_NOMES_AUXILIAR, "Alunos")
     ws.cell(22, COLUNA_TEMAS_AUXILIAR, "Temas")
 
@@ -204,7 +209,7 @@ def _limpar_notas_folha_avaliacao(ws, col_inicio: int, col_fim: int) -> None:
     linhas = _linhas_sync()
     for col in range(col_inicio, col_fim + 1):
         for linha in linhas:
-            ws.cell(linha, col, None)
+            _definir_celula(ws, linha, col, None)
 
 
 def _preencher_folha_avaliacao(
@@ -240,10 +245,10 @@ def _preencher_folha_avaliacao(
         av = avaliacoes.get(aluno.id, {})
         for linha, criterio in linhas.items():
             if criterio in av:
-                ws.cell(linha, col, int(av[criterio].nota))
+                _definir_celula(ws, linha, col, int(av[criterio].nota))
                 exportados += 1
             else:
-                ws.cell(linha, col, None)
+                _definir_celula(ws, linha, col, None)
 
     return exportados, colunas_aluno, avisos
 
