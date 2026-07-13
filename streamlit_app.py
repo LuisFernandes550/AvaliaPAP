@@ -1754,6 +1754,23 @@ section.main div[data-testid="stMarkdown"]:has(.pap-secao-topo) + div {{
 """
 
 
+def _celula_grelha_vazia(valor) -> bool:
+    if valor is None:
+        return True
+    if isinstance(valor, float) and pd.isna(valor):
+        return True
+    if valor == "":
+        return True
+    return False
+
+
+def _apagar_nota_grelha(aluno_id: int, criterio: CriterioAvaliacao) -> None:
+    storage.apagar_avaliacoes_criterios([aluno_id], [criterio])
+    st.session_state.pop(f"nota_{criterio.value}_{aluno_id}", None)
+    st.session_state.pop(f"com_{criterio.value}_{aluno_id}", None)
+    st.session_state.pop("_acta_bytes", None)
+
+
 def _guardar_nota_grelha(
     aluno_id: int,
     criterio: CriterioAvaliacao,
@@ -1781,6 +1798,7 @@ def _guardar_nota_grelha(
         ),
     )
     st.session_state[f"nota_{criterio.value}_{aluno_id}"] = nota
+    st.session_state.pop("_acta_bytes", None)
 
 
 def _percentagens_colunas(n_alunos: int) -> tuple[float, float]:
@@ -1905,7 +1923,11 @@ def _aplicar_edicao_aggrid(
             if aluno is None:
                 continue
             novo = linha.get(chave)
-            if novo is None or (isinstance(novo, float) and pd.isna(novo)):
+            av = storage.obter_avaliacoes(aluno.id)
+            if _celula_grelha_vazia(novo):
+                if criterio in av:
+                    _apagar_nota_grelha(aluno.id, criterio)
+                    mudou = True
                 continue
             try:
                 nota_nova = int(round(float(novo)))
@@ -1913,11 +1935,11 @@ def _aplicar_edicao_aggrid(
                 continue
             if not 1 <= nota_nova <= NOTA_MAXIMA:
                 continue
-            av = storage.obter_avaliacoes(aluno.id)
             atual = int(av[criterio].nota) if criterio in av else None
             if nota_nova == atual:
                 continue
             _guardar_nota_grelha(aluno.id, criterio, nota_nova, av)
+            st.session_state.pop("_acta_bytes", None)
             mudou = True
     return mudou
 
