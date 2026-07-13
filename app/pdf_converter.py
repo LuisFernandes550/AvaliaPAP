@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 import sys
@@ -8,6 +9,13 @@ from pathlib import Path
 from app.config import PDF_DIR
 
 _WD_FORMAT_PDF = 17
+_CSS_PDF_HTML = (
+    "@page { size: A4; margin: 2cm; } "
+    "body { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; } "
+    "table { border-collapse: collapse; width: 100%; } "
+    "td, th { border: 1px solid #ccc; padding: 4px; } "
+    "img { max-width: 100%; height: auto; }"
+)
 
 
 def caminho_pdf_para_docx(nome_docx: str) -> Path:
@@ -117,6 +125,30 @@ def _gerar_pdf_libreoffice(docx_path: Path, pdf_path: Path) -> str | None:
     return None
 
 
+def _gerar_pdf_via_html(docx_path: Path, pdf_path: Path) -> str | None:
+    """DOCX → HTML → PDF (funciona online sem Word; formatação aproximada)."""
+    html_body, erro = docx_para_html(docx_path)
+    if erro or not html_body:
+        return erro or "Não foi possível ler o DOCX."
+    try:
+        from xhtml2pdf import pisa
+    except ImportError:
+        return "xhtml2pdf não instalado"
+    documento = (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        f"<style>{_CSS_PDF_HTML}</style></head><body>{html_body}</body></html>"
+    )
+    buffer = io.BytesIO()
+    resultado = pisa.CreatePDF(documento, dest=buffer, encoding="utf-8")
+    if resultado.err:
+        return "Conversão HTML→PDF falhou."
+    dados = buffer.getvalue()
+    if len(dados) < 500:
+        return "PDF gerado vazio — use a pré-visualização HTML."
+    pdf_path.write_bytes(dados)
+    return None if pdf_path.exists() else "Não foi possível gravar o PDF."
+
+
 def docx_para_html(docx_path: Path) -> tuple[str | None, str | None]:
     """Pré-visualização HTML (funciona online sem Word). Devolve (html, erro)."""
     try:
@@ -160,8 +192,11 @@ def gerar_pdf(docx_path: Path) -> tuple[Path | None, str | None]:
     if erro_lo:
         erros.append(erro_lo)
 
-    if sys.platform != "win32" and not erros:
-        erros.append("Instale LibreOffice para converter PDF no servidor.")
+    erro_html = _gerar_pdf_via_html(docx_path, pdf_path)
+    if erro_html is None and pdf_path.exists():
+        return pdf_path, None
+    if erro_html:
+        erros.append(erro_html)
 
     if erros:
         return None, " · ".join(erros)
