@@ -10,18 +10,20 @@ from pathlib import Path
 
 from app.config import CONFIG_DIR, DATA_DIR, DB_PATH, EXPORT_DIR, RELATORIOS_DIR
 
-_PASTAS = (CONFIG_DIR, RELATORIOS_DIR, EXPORT_DIR)
+_PASTAS_COMPLETAS = (CONFIG_DIR, RELATORIOS_DIR, EXPORT_DIR)
+_PASTAS_ESSENCIAIS = (CONFIG_DIR, EXPORT_DIR)
 _FICHEIROS = (DB_PATH,)
 
 
-def exportar_backup() -> bytes:
-    """Cria um zip com a base de dados, configuração e relatórios."""
+def exportar_backup(*, completo: bool = False) -> bytes:
+    """Cria zip com bd + config; opcionalmente inclui relatórios .docx/.pdf."""
+    pastas = _PASTAS_COMPLETAS if completo else _PASTAS_ESSENCIAIS
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for ficheiro in _FICHEIROS:
             if ficheiro.exists():
                 zf.write(ficheiro, f"data/{ficheiro.relative_to(DATA_DIR).as_posix()}")
-        for pasta in _PASTAS:
+        for pasta in pastas:
             if not pasta.exists():
                 continue
             for caminho in pasta.rglob("*"):
@@ -30,7 +32,11 @@ def exportar_backup() -> bytes:
                     zf.write(caminho, arco)
         zf.writestr(
             "meta.txt",
-            f"exportado_em={datetime.now().isoformat()}\norigem={DATA_DIR}\n",
+            (
+                f"exportado_em={datetime.now().isoformat()}\n"
+                f"origem={DATA_DIR}\n"
+                f"completo={completo}\n"
+            ),
         )
     return buffer.getvalue()
 
@@ -45,9 +51,16 @@ def importar_backup(conteudo: bytes) -> tuple[int, list[str]]:
     with zipfile.ZipFile(io.BytesIO(conteudo)) as zf:
         membros = [m for m in zf.namelist() if m.startswith("data/") and not m.endswith("/")]
         if not membros:
+            # Windows pode gravar barras invertidas no zip
+            membros = [
+                m.replace("\\", "/")
+                for m in zf.namelist()
+                if m.replace("\\", "/").startswith("data/") and not m.endswith("/")
+            ]
+        if not membros:
             raise ValueError("Backup inválido — não contém pasta data/.")
         for membro in membros:
-            rel = membro.removeprefix("data/").replace("/", Path.sep)
+            rel = membro.replace("\\", "/").removeprefix("data/")
             destino = DATA_DIR / rel
             destino.parent.mkdir(parents=True, exist_ok=True)
             destino.write_bytes(zf.read(membro))

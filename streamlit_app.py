@@ -869,27 +869,42 @@ def _pagina_backup_dados(sessao: dict) -> None:
     col_dl, col_up = st.columns(2)
     with col_dl:
         try:
-            zip_bytes = exportar_backup()
+            zip_essencial = exportar_backup(completo=False)
+            mb_ess = len(zip_essencial) / (1024 * 1024)
             st.download_button(
-                "⬇ Exportar backup (zip)",
-                data=zip_bytes,
-                file_name=f"avaliapap_backup_{datetime.now():%Y%m%d_%H%M}.zip",
+                f"⬇ Backup essencial ({mb_ess:.1f} MB)",
+                data=zip_essencial,
+                file_name=f"avaliapap_essencial_{datetime.now():%Y%m%d_%H%M}.zip",
                 mime="application/zip",
                 use_container_width=True,
-                key="dl_backup_dados",
+                key="dl_backup_essencial",
+                help="Base de dados, notas, configuração — ideal para PC ↔ Cloud (limite 200 MB).",
+            )
+            zip_completo = exportar_backup(completo=True)
+            mb_comp = len(zip_completo) / (1024 * 1024)
+            st.download_button(
+                f"⬇ Backup completo ({mb_comp:.0f} MB)",
+                data=zip_completo,
+                file_name=f"avaliapap_completo_{datetime.now():%Y%m%d_%H%M}.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="dl_backup_completo",
+                help="Inclui ficheiros .docx/.pdf — só recomendado no PC local.",
             )
         except Exception as exc:
             st.error(f"Erro ao exportar: {exc}")
     with col_up:
         upload = st.file_uploader(
-            "Importar backup",
+            "Importar backup (.zip)",
             type=["zip"],
             key="upload_backup_dados",
-            label_visibility="collapsed",
         )
+        if upload:
+            mb_up = upload.size / (1024 * 1024) if upload.size else 0
+            st.caption(f"Ficheiro seleccionado: {upload.name} ({mb_up:.1f} MB)")
         if upload and st.button("Restaurar backup", type="primary", key="btn_import_backup"):
             try:
-                n, avisos = importar_backup(upload.read())
+                n, avisos = importar_backup(upload.getvalue())
                 st.success(f"Backup restaurado ({n} ficheiros). A recarregar…")
                 for aviso in avisos:
                     st.warning(aviso)
@@ -898,8 +913,9 @@ def _pagina_backup_dados(sessao: dict) -> None:
                 st.error(str(exc))
 
     st.caption(
-        "**PC → Cloud:** exporte no PC, importe na app online (Definições). "
-        "**Cloud → PC:** exporte online antes do reboot, importe no PC."
+        "**Essencial** — alunos, notas, textos para IA (cabe online). "
+        "**Completo** — inclui .docx (só PC; na cloud use essencial + importe .docx na sidebar). "
+        "Limite upload Streamlit Cloud: **200 MB**."
     )
     st.divider()
 
