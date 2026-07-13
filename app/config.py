@@ -88,3 +88,29 @@ NOTA_MAXIMA = 20
 ADMIN_USERNAME = _ler_config("PAP_ADMIN_USER", "admin")
 ADMIN_PASSWORD = _ler_config("PAP_ADMIN_PASSWORD", "admin")
 ADMIN_NOME = _ler_config("PAP_ADMIN_NOME", "Administrador")
+
+
+def obter_config_ia() -> dict[str, str]:
+    """Lê a configuração de IA em tempo de execução (Secrets do Streamlit Cloud)."""
+    gemini_key = _ler_config("GEMINI_API_KEY")
+    openai_key = _ler_config("OPENAI_API_KEY")
+    provider = _ler_config("LLM_PROVIDER")
+    if not provider:
+        if EM_STREAMLIT_CLOUD:
+            if gemini_key:
+                provider = "gemini"
+            elif openai_key:
+                provider = "openai"
+            else:
+                provider = "auto"
+        else:
+            provider = "ollama"
+    return {
+        "provider": provider.lower(),
+        "ollama_base_url": _ler_config("OLLAMA_BASE_URL", "http://localhost:11434"),
+        "ollama_model": _ler_config("OLLAMA_MODEL", "llama3.2"),
+        "openai_api_key": openai_key,
+        "openai_model": _ler_config("OPENAI_MODEL", "gpt-4o-mini"),
+        "gemini_api_key": gemini_key,
+        "gemini_model": _ler_config("GEMINI_MODEL", "gemini-2.0-flash"),
+    }

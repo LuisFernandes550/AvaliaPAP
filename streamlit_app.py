@@ -2081,7 +2081,7 @@ with st.sidebar:
     if disp:
         st.success(f"IA: {motor}")
     else:
-        st.warning(f"IA indisponível{f' — {motor}' if motor else ''}")
+        st.warning(f"IA indisponível — {motor}")
     if st.button("Verificar motor IA", use_container_width=True, key="btn_verificar_ia"):
         st.session_state.pop("_ia_status", None)
         st.rerun()

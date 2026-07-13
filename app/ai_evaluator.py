@@ -38,37 +38,59 @@ CRITERIO_PERTINENCIA = CriterioAvaliacao.PERTINENCIA
 CRITERIOS_LLM = [c for c in CRITERIOS_IA if c != CRITERIO_PERTINENCIA]
 
 
+def _cfg_ia() -> dict[str, str]:
+    return _config.obter_config_ia()
+
+
 def ollama_disponivel() -> bool:
+    cfg = _cfg_ia()
     if getattr(_config, "EM_STREAMLIT_CLOUD", False):
         return False
+    base = cfg["ollama_base_url"]
     try:
-        req = urllib.request.Request(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", method="GET")
+        req = urllib.request.Request(f"{base.rstrip('/')}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=8) as resp:
             return resp.status == 200
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
 
 
+def _chave_gemini_valida(chave: str) -> bool:
+    """Chaves do Google AI Studio começam normalmente por AIza."""
+    return bool(chave) and chave.startswith("AIza")
+
+
 def _motores_prioridade() -> list[tuple[str, bool, str]]:
     """Ordem de tentativa: Ollama (gratuito) → Gemini → ChatGPT."""
+    cfg = _cfg_ia()
+    provider = cfg["provider"]
     motores: list[tuple[str, bool, str]] = []
-    if LLM_PROVIDER in ("ollama", "auto"):
-        motores.append(("ollama", ollama_disponivel(), f"Ollama ({OLLAMA_MODEL})"))
-    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
-        motores.append(("gemini", True, f"Gemini ({GEMINI_MODEL})"))
-    if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
-        motores.append(("openai", True, f"ChatGPT ({OPENAI_MODEL})"))
+    if provider in ("ollama", "auto"):
+        motores.append(("ollama", ollama_disponivel(), f"Ollama ({cfg['ollama_model']})"))
+    if provider in ("gemini", "auto") and _chave_gemini_valida(cfg["gemini_api_key"]):
+        motores.append(("gemini", True, f"Gemini ({cfg['gemini_model']})"))
+    if provider in ("openai", "chatgpt", "auto") and cfg["openai_api_key"]:
+        motores.append(("openai", True, f"ChatGPT ({cfg['openai_model']})"))
     return motores
 
 
 def ia_disponivel() -> tuple[bool, str]:
+    cfg = _cfg_ia()
     for _motor_id, disponivel, etiqueta in _motores_prioridade():
         if disponivel:
             return True, etiqueta
-    if LLM_PROVIDER == "ollama" and (OPENAI_API_KEY or GEMINI_API_KEY):
+    if cfg["provider"] in ("gemini", "auto") and cfg["gemini_api_key"] and not _chave_gemini_valida(
+        cfg["gemini_api_key"]
+    ):
+        return False, "Chave Gemini inválida — use uma chave AIza de aistudio.google.com/apikey"
+    if cfg["provider"] == "ollama" and (cfg["openai_api_key"] or cfg["gemini_api_key"]):
         return False, (
             "Ollama offline — use LLM_PROVIDER=auto no .env para recorrer a ChatGPT/Gemini"
         )
+    if _config.EM_STREAMLIT_CLOUD and not _chave_gemini_valida(cfg["gemini_api_key"]):
+        if not cfg["gemini_api_key"]:
+            return False, "GEMINI_API_KEY em falta nos Secrets do Streamlit Cloud"
+        return False, "Chave Gemini inválida — obtenha em aistudio.google.com/apikey"
     return False, "Nenhum motor de IA disponível"
 
 
@@ -81,19 +103,21 @@ def avaliar_relatorio(
 ) -> list[ResultadoCriterio]:
     prompt = _construir_prompt(nome_aluno, titulo_pap, area, texto_relatorio, instrucoes)
     pertinencia = _resultado_pertinencia(area, texto_relatorio, instrucoes)
+    cfg = _cfg_ia()
+    provider = cfg["provider"]
 
-    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
+    if provider in ("ollama", "auto") and ollama_disponivel():
         resposta = _chamar_ollama(prompt)
         if resposta:
             return _parsear_resposta(resposta, "ollama") + [pertinencia]
 
-    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
+    if provider in ("gemini", "auto") and _chave_gemini_valida(cfg["gemini_api_key"]):
         try:
             resposta = _chamar_gemini(prompt)
             return _parsear_resposta(resposta, "gemini") + [pertinencia]
         except Exception as exc:
             msg = str(exc)
-            if LLM_PROVIDER == "gemini":
+            if provider == "gemini":
                 if "429" in msg or "quota" in msg.lower():
                     raise ValueError(
                         "Quota do Gemini esgotada. Use Ollama local (gratuito): "
@@ -103,7 +127,7 @@ def avaliar_relatorio(
                 raise
             # auto: continua para o proximo motor
 
-    if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
+    if provider in ("openai", "chatgpt", "auto") and cfg["openai_api_key"]:
         try:
             resposta = _chamar_openai(prompt)
             if resposta:
@@ -111,7 +135,7 @@ def avaliar_relatorio(
         except Exception as exc:
             msg = str(exc)
             quota = "429" in msg or "insufficient_quota" in msg or "quota" in msg.lower()
-            if LLM_PROVIDER in ("openai", "chatgpt"):
+            if provider in ("openai", "chatgpt"):
                 if quota:
                     raise ValueError(
                         "ChatGPT sem creditos (erro 429). Ativa faturacao/creditos em "
@@ -298,23 +322,25 @@ def _id_subcapitulo(titulo: str) -> str:
 
 
 def _chamar_ia_texto(prompt: str, max_tokens: int = 3000) -> str:
-    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
+    cfg = _cfg_ia()
+    provider = cfg["provider"]
+    if provider in ("ollama", "auto") and ollama_disponivel():
         resposta = _chamar_ollama(prompt, max_tokens=max_tokens)
         if resposta:
             return resposta
-    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
+    if provider in ("gemini", "auto") and _chave_gemini_valida(cfg["gemini_api_key"]):
         try:
             return _chamar_gemini(prompt)
         except Exception:
-            if LLM_PROVIDER == "gemini":
+            if provider == "gemini":
                 raise
-    if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
+    if provider in ("openai", "chatgpt", "auto") and cfg["openai_api_key"]:
         try:
             resposta = _chamar_openai(prompt, max_tokens=max_tokens)
             if resposta:
                 return resposta
         except Exception:
-            if LLM_PROVIDER in ("openai", "chatgpt"):
+            if provider in ("openai", "chatgpt"):
                 raise
     raise ValueError("Nenhum motor de IA disponivel para gerar os resumos.")
 
@@ -397,14 +423,15 @@ def _topicos_da_area(area_instr: str) -> list[str]:
 
 
 def _chamar_openai(prompt: str, max_tokens: int = 2500) -> Optional[str]:
+    cfg = _cfg_ia()
     try:
         from openai import OpenAI
     except ImportError:
         return None
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAI(api_key=cfg["openai_api_key"])
     try:
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=cfg["openai_model"],
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=max_tokens,
@@ -416,14 +443,15 @@ def _chamar_openai(prompt: str, max_tokens: int = 2500) -> Optional[str]:
 
 
 def _chamar_ollama(prompt: str, max_tokens: int = 2500) -> Optional[str]:
+    cfg = _cfg_ia()
     try:
         from openai import OpenAI
     except ImportError:
         return None
-    client = OpenAI(base_url=f"{OLLAMA_BASE_URL.rstrip('/')}/v1", api_key="ollama")
+    client = OpenAI(base_url=f"{cfg['ollama_base_url'].rstrip('/')}/v1", api_key="ollama")
     try:
         response = client.chat.completions.create(
-            model=OLLAMA_MODEL,
+            model=cfg["ollama_model"],
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=max_tokens,
@@ -436,8 +464,9 @@ def _chamar_ollama(prompt: str, max_tokens: int = 2500) -> Optional[str]:
 def _chamar_gemini(prompt: str) -> str:
     import google.generativeai as genai
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    cfg = _cfg_ia()
+    genai.configure(api_key=cfg["gemini_api_key"])
+    model = genai.GenerativeModel(cfg["gemini_model"])
     response = model.generate_content(
         prompt,
         generation_config={"temperature": 0.3, "max_output_tokens": 2048},
