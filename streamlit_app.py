@@ -45,6 +45,14 @@ from app.models import (
 from app.pdf_converter import caminho_pdf_para_docx, gerar_pdf
 from app.report_parser import analisar_relatorio
 from app.temas_pap import colunas_turma_ordenadas, tema_para_nome
+from app.nomes_alunos import (
+    AlunoTurma,
+    aplicar_nomes_a_alunos,
+    carregar_nomes_turma,
+    guardar_nomes_turma,
+    nome_por_ficheiro,
+    nomes_turma_default,
+)
 from app.storage import (
     PapStorage,
     carregar_instrucoes,
@@ -404,12 +412,12 @@ def _importar_ficheiros(ficheiros) -> int:
         except Exception as exc:
             st.sidebar.error(f"Erro em {ficheiro.name}: {exc}")
             continue
-        nome = info["nome"]
+        nome = nome_por_ficheiro(ficheiro.name) or info["nome"]
         storage.guardar_aluno(
             AlunoRelatorio(
                 nome=nome,
                 titulo_pap=info["titulo_pap"],
-                tema_pap=tema_para_nome(nome),
+                tema_pap=tema_para_nome(nome) or info["titulo_pap"],
                 area_pap=info["area_pap"],
                 ficheiro=ficheiro.name,
                 texto_extraido=info["texto_extraido"],
@@ -751,10 +759,92 @@ def _pagina_configuracao_app(sessao: dict) -> None:
     st.divider()
 
 
+def _pagina_nomes_alunos() -> None:
+    st.header("Nomes da turma")
+    st.caption(
+        "Defina o **nome completo** de cada aluno e a **chave no ficheiro** "
+        "(texto que aparece no nome do .docx importado, ex.: `AdrianoSalucombo`). "
+        "Use **Aplicar aos alunos importados** para corrigir nomes já na base de dados."
+    )
+    entries = carregar_nomes_turma()
+    df = pd.DataFrame(
+        [
+            {
+                "Nome completo": e.nome,
+                "Chave no ficheiro": e.chave_ficheiro,
+                "Tema PAP": e.tema,
+            }
+            for e in entries
+        ]
+    )
+    edited = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Nome completo": st.column_config.TextColumn(required=True),
+            "Chave no ficheiro": st.column_config.TextColumn(
+                help="Parte do nome do ficheiro .docx (ex.: VladimiroPankratau)",
+            ),
+            "Tema PAP": st.column_config.TextColumn(
+                help="Tema oficial da PAP (opcional; usado na grelha e exportação)",
+            ),
+        },
+        key="editor_nomes_turma",
+    )
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Guardar nomes", type="primary", key="guardar_nomes_turma"):
+        novos = [
+            AlunoTurma(
+                nome=str(row["Nome completo"]).strip(),
+                chave_ficheiro=str(row.get("Chave no ficheiro") or "").strip(),
+                tema=str(row.get("Tema PAP") or "").strip(),
+            )
+            for _, row in edited.iterrows()
+            if str(row.get("Nome completo", "")).strip()
+        ]
+        if not novos:
+            st.error("Indique pelo menos um aluno.")
+        else:
+            guardar_nomes_turma(novos)
+            st.success("Nomes guardados.")
+            st.rerun()
+    if c2.button("Aplicar aos alunos importados", key="aplicar_nomes_turma"):
+        novos = [
+            AlunoTurma(
+                nome=str(row["Nome completo"]).strip(),
+                chave_ficheiro=str(row.get("Chave no ficheiro") or "").strip(),
+                tema=str(row.get("Tema PAP") or "").strip(),
+            )
+            for _, row in edited.iterrows()
+            if str(row.get("Nome completo", "")).strip()
+        ]
+        if novos:
+            guardar_nomes_turma(novos)
+        total, avisos = aplicar_nomes_a_alunos(storage)
+        if total:
+            st.success(f"{total} aluno(s) actualizado(s).")
+        else:
+            st.info("Nenhum aluno precisou de actualização.")
+        for aviso in avisos[:10]:
+            st.warning(aviso)
+        if len(avisos) > 10:
+            st.caption(f"… e mais {len(avisos) - 10} avisos.")
+        st.rerun()
+    if c3.button("Restaurar lista padrão", key="reset_nomes_turma"):
+        guardar_nomes_turma(nomes_turma_default())
+        st.success("Lista padrão restaurada.")
+        st.rerun()
+    st.divider()
+
+
 def _pagina_configuracao() -> None:
     sessao = _sessao_auth()
     if sessao:
         _pagina_configuracao_app(sessao)
+
+    _pagina_nomes_alunos()
 
     st.header("Instruções de avaliação")
     instr = carregar_instrucoes()
