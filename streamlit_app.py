@@ -368,10 +368,27 @@ def _pagina_gestao_utilizadores(sessao: dict) -> None:
 
 
 
-@st.cache_data(ttl=30, show_spinner=False)
 def _ia_status() -> tuple[bool, str]:
-    """Estado da IA em cache (evita 1 pedido HTTP ao Ollama por tab/rerun)."""
-    return ia_disponivel()
+    """Estado da IA com cache curto quando indisponível (Ollama pode arrancar depois)."""
+    import time
+
+    agora = time.time()
+    cache = st.session_state.get("_ia_status")
+    if cache:
+        ttl = 60 if cache["disp"] else 8
+        if agora - cache["ts"] < ttl:
+            return cache["disp"], cache["motor"]
+    disp, motor = ia_disponivel()
+    st.session_state["_ia_status"] = {"disp": disp, "motor": motor, "ts": agora}
+    return disp, motor
+
+
+def _aviso_ia_indisponivel() -> None:
+    st.warning(
+        "Motor IA indisponível. Opções: **Ollama** (local, gratuito — ollama.com), "
+        "**ChatGPT** ou **Gemini** (chaves no `.env`). "
+        "Com várias configuradas, use `LLM_PROVIDER=auto` para escolher a primeira disponível."
+    )
 
 
 def _inicializar_instrucoes() -> None:
@@ -624,7 +641,7 @@ def _renderizar_resumo_capitulos(aluno: AlunoRelatorio) -> None:
                 barra.empty()
                 st.error(str(exc))
     else:
-        st.warning("Motor IA indisponível. Instale/execute o Ollama ou configure ChatGPT no .env.")
+        _aviso_ia_indisponivel()
 
     if not resumos_ia:
         st.info("Carrega em **Resumir relatório com IA** para gerar o resumo de cada subcapítulo.")
@@ -706,10 +723,7 @@ def _renderizar_tab_aluno(aluno: AlunoRelatorio) -> None:
         disp, motor = _ia_status()
         _, cbtn, _ = st.columns([1, 2, 1])
         if not disp:
-            st.warning(
-                "Motor IA indisponível. **Recomendado: Ollama** (gratuito, local). "
-                "Instale em ollama.com, execute `ollama pull llama3.2` e reinicie a app."
-            )
+            _aviso_ia_indisponivel()
         elif cbtn.button("Avaliar relatório", type="primary", key=f"avaliar_{aluno.id}", use_container_width=True):
             with st.spinner("A avaliar... pode demorar 1-2 minutos com Ollama."):
                 try:
@@ -2061,7 +2075,10 @@ with st.sidebar:
     if disp:
         st.success(f"IA: {motor}")
     else:
-        st.warning("IA: Ollama ou Gemini necessário")
+        st.warning(f"IA indisponível{f' — {motor}' if motor else ''}")
+    if st.button("Verificar motor IA", use_container_width=True, key="btn_verificar_ia"):
+        st.session_state.pop("_ia_status", None)
+        st.rerun()
     st.caption("Use iniciar.bat na Drive da escola.")
 
 alunos = storage.listar_alunos()

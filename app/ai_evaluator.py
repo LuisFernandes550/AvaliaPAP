@@ -41,20 +41,33 @@ CRITERIOS_LLM = [c for c in CRITERIOS_IA if c != CRITERIO_PERTINENCIA]
 def ollama_disponivel() -> bool:
     try:
         req = urllib.request.Request(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", method="GET")
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=8) as resp:
             return resp.status == 200
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
 
 
-def ia_disponivel() -> tuple[bool, str]:
-    if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
-        return True, f"ChatGPT ({OPENAI_MODEL})"
-    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
-        return True, f"Ollama ({OLLAMA_MODEL})"
+def _motores_prioridade() -> list[tuple[str, bool, str]]:
+    """Ordem de tentativa: Ollama (gratuito) → Gemini → ChatGPT."""
+    motores: list[tuple[str, bool, str]] = []
+    if LLM_PROVIDER in ("ollama", "auto"):
+        motores.append(("ollama", ollama_disponivel(), f"Ollama ({OLLAMA_MODEL})"))
     if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
-        return True, f"Gemini ({GEMINI_MODEL})"
-    return False, "Nenhum motor de IA disponivel"
+        motores.append(("gemini", True, f"Gemini ({GEMINI_MODEL})"))
+    if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
+        motores.append(("openai", True, f"ChatGPT ({OPENAI_MODEL})"))
+    return motores
+
+
+def ia_disponivel() -> tuple[bool, str]:
+    for _motor_id, disponivel, etiqueta in _motores_prioridade():
+        if disponivel:
+            return True, etiqueta
+    if LLM_PROVIDER == "ollama" and (OPENAI_API_KEY or GEMINI_API_KEY):
+        return False, (
+            "Ollama offline — use LLM_PROVIDER=auto no .env para recorrer a ChatGPT/Gemini"
+        )
+    return False, "Nenhum motor de IA disponível"
 
 
 def avaliar_relatorio(
@@ -67,6 +80,27 @@ def avaliar_relatorio(
     prompt = _construir_prompt(nome_aluno, titulo_pap, area, texto_relatorio, instrucoes)
     pertinencia = _resultado_pertinencia(area, texto_relatorio, instrucoes)
 
+    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
+        resposta = _chamar_ollama(prompt)
+        if resposta:
+            return _parsear_resposta(resposta, "ollama") + [pertinencia]
+
+    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
+        try:
+            resposta = _chamar_gemini(prompt)
+            return _parsear_resposta(resposta, "gemini") + [pertinencia]
+        except Exception as exc:
+            msg = str(exc)
+            if LLM_PROVIDER == "gemini":
+                if "429" in msg or "quota" in msg.lower():
+                    raise ValueError(
+                        "Quota do Gemini esgotada. Use Ollama local (gratuito): "
+                        "instale em ollama.com, execute 'ollama pull llama3.2' e defina "
+                        "LLM_PROVIDER=ollama no ficheiro .env"
+                    ) from exc
+                raise
+            # auto: continua para o proximo motor
+
     if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
         try:
             resposta = _chamar_openai(prompt)
@@ -75,7 +109,6 @@ def avaliar_relatorio(
         except Exception as exc:
             msg = str(exc)
             quota = "429" in msg or "insufficient_quota" in msg or "quota" in msg.lower()
-            # Em modo "auto" recua para os outros motores; caso contrario, avisa.
             if LLM_PROVIDER in ("openai", "chatgpt"):
                 if quota:
                     raise ValueError(
@@ -83,26 +116,7 @@ def avaliar_relatorio(
                         "platform.openai.com (Billing) ou muda LLM_PROVIDER para 'ollama' no .env."
                     ) from exc
                 raise
-            # auto: continua para o proximo motor disponivel
-
-    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
-        resposta, fonte = _chamar_ollama(prompt), "ollama"
-        if resposta:
-            return _parsear_resposta(resposta, fonte) + [pertinencia]
-
-    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
-        try:
-            resposta = _chamar_gemini(prompt)
-            return _parsear_resposta(resposta, "gemini") + [pertinencia]
-        except Exception as exc:
-            msg = str(exc)
-            if "429" in msg or "quota" in msg.lower():
-                raise ValueError(
-                    "Quota do Gemini esgotada. Use Ollama local (gratuito): "
-                    "instale em ollama.com, execute 'ollama pull llama3.2' e defina "
-                    "LLM_PROVIDER=ollama no ficheiro .env"
-                ) from exc
-            raise
+            # auto: esgotou os motores
 
     raise ValueError(
         "Nenhum motor de IA disponivel. Configure OPENAI_API_KEY (ChatGPT), "
@@ -282,6 +296,16 @@ def _id_subcapitulo(titulo: str) -> str:
 
 
 def _chamar_ia_texto(prompt: str, max_tokens: int = 3000) -> str:
+    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
+        resposta = _chamar_ollama(prompt, max_tokens=max_tokens)
+        if resposta:
+            return resposta
+    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
+        try:
+            return _chamar_gemini(prompt)
+        except Exception:
+            if LLM_PROVIDER == "gemini":
+                raise
     if LLM_PROVIDER in ("openai", "chatgpt", "auto") and OPENAI_API_KEY:
         try:
             resposta = _chamar_openai(prompt, max_tokens=max_tokens)
@@ -290,12 +314,6 @@ def _chamar_ia_texto(prompt: str, max_tokens: int = 3000) -> str:
         except Exception:
             if LLM_PROVIDER in ("openai", "chatgpt"):
                 raise
-    if LLM_PROVIDER in ("ollama", "auto") and ollama_disponivel():
-        resposta = _chamar_ollama(prompt, max_tokens=max_tokens)
-        if resposta:
-            return resposta
-    if LLM_PROVIDER in ("gemini", "auto") and GEMINI_API_KEY:
-        return _chamar_gemini(prompt)
     raise ValueError("Nenhum motor de IA disponivel para gerar os resumos.")
 
 
