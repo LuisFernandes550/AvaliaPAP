@@ -7,6 +7,7 @@ import secrets
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Iterator, Optional
 
 import bcrypt
@@ -26,13 +27,14 @@ class Utilizador:
 
 class AuthStorage:
     def __init__(self, db_path=DB_PATH) -> None:
-        self.db_path = str(db_path)
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._bootstrap_admin()
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(str(self.db_path.resolve()))
         conn.row_factory = sqlite3.Row
         try:
             yield conn

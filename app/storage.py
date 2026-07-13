@@ -4,6 +4,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Iterator, Optional
 
 from app.config import DB_PATH, INSTRUCOES_PATH
@@ -20,12 +21,13 @@ class PapStorage:
     """Armazenamento local em SQLite — funciona em qualquer pasta (ex.: Google Drive)."""
 
     def __init__(self, db_path=DB_PATH) -> None:
-        self.db_path = str(db_path)
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(str(self.db_path.resolve()))
         conn.row_factory = sqlite3.Row
         try:
             yield conn
