@@ -810,8 +810,7 @@ def _pagina_configuracao_app(sessao: dict) -> None:
     c1, _ = st.columns(2)
     if c1.button("Guardar título", type="primary", key="guardar_titulo_app"):
         guardar_configuracao_app(ConfiguracaoApp(titulo=titulo.strip() or TITULO_PADRAO))
-        st.success("Título guardado.")
-        st.rerun()
+        st.toast("Título guardado.")
     st.divider()
 
 
@@ -864,8 +863,7 @@ def _pagina_nomes_alunos() -> None:
             st.error("Indique pelo menos um aluno.")
         else:
             guardar_nomes_turma(novos)
-            st.success("Nomes guardados.")
-            st.rerun()
+            st.toast("Nomes guardados.")
     if c2.button("Aplicar aos alunos importados", key="aplicar_nomes_turma"):
         novos = [
             AlunoTurma(
@@ -895,6 +893,11 @@ def _pagina_nomes_alunos() -> None:
     st.divider()
 
 
+def _invalidar_cache_backup() -> None:
+    st.session_state.pop("_backup_essencial_bytes", None)
+    st.session_state.pop("_backup_completo_bytes", None)
+
+
 def _pagina_backup_dados(sessao: dict) -> None:
     if sessao["role"] != "admin":
         return
@@ -907,11 +910,22 @@ def _pagina_backup_dados(sessao: dict) -> None:
 
     col_dl, col_up = st.columns(2)
     with col_dl:
-        try:
-            zip_essencial = exportar_backup(completo=False)
+        st.caption("Clique **Gerar** antes de descarregar — evita lentidão ao editar definições.")
+        if st.button(
+            "Gerar backup essencial",
+            use_container_width=True,
+            key="btn_gen_backup_essencial",
+        ):
+            try:
+                with st.spinner("A gerar backup essencial…"):
+                    st.session_state["_backup_essencial_bytes"] = exportar_backup(completo=False)
+            except Exception as exc:
+                st.error(f"Erro ao exportar: {exc}")
+        zip_essencial = st.session_state.get("_backup_essencial_bytes")
+        if zip_essencial:
             mb_ess = len(zip_essencial) / (1024 * 1024)
             st.download_button(
-                f"⬇ Backup essencial ({mb_ess:.1f} MB)",
+                f"⬇ Descarregar essencial ({mb_ess:.1f} MB)",
                 data=zip_essencial,
                 file_name=f"avaliapap_essencial_{datetime.now():%Y%m%d_%H%M}.zip",
                 mime="application/zip",
@@ -919,10 +933,21 @@ def _pagina_backup_dados(sessao: dict) -> None:
                 key="dl_backup_essencial",
                 help="Base de dados, notas, configuração e PDFs — ideal para PC ↔ Cloud (limite 200 MB).",
             )
-            zip_completo = exportar_backup(completo=True)
+        if st.button(
+            "Gerar backup completo",
+            use_container_width=True,
+            key="btn_gen_backup_completo",
+        ):
+            try:
+                with st.spinner("A gerar backup completo…"):
+                    st.session_state["_backup_completo_bytes"] = exportar_backup(completo=True)
+            except Exception as exc:
+                st.error(f"Erro ao exportar: {exc}")
+        zip_completo = st.session_state.get("_backup_completo_bytes")
+        if zip_completo:
             mb_comp = len(zip_completo) / (1024 * 1024)
             st.download_button(
-                f"⬇ Backup completo ({mb_comp:.0f} MB)",
+                f"⬇ Descarregar completo ({mb_comp:.0f} MB)",
                 data=zip_completo,
                 file_name=f"avaliapap_completo_{datetime.now():%Y%m%d_%H%M}.zip",
                 mime="application/zip",
@@ -930,8 +955,6 @@ def _pagina_backup_dados(sessao: dict) -> None:
                 key="dl_backup_completo",
                 help="Inclui ficheiros .docx/.pdf — só recomendado no PC local.",
             )
-        except Exception as exc:
-            st.error(f"Erro ao exportar: {exc}")
     with col_up:
         upload = st.file_uploader(
             "Importar backup (.zip)",
@@ -944,6 +967,7 @@ def _pagina_backup_dados(sessao: dict) -> None:
         if upload and st.button("Restaurar backup", type="primary", key="btn_import_backup"):
             try:
                 n, avisos = importar_backup(upload.getvalue())
+                _invalidar_cache_backup()
                 st.success(f"Backup restaurado ({n} ficheiros). A recarregar…")
                 for aviso in avisos:
                     st.warning(aviso)
@@ -1007,7 +1031,7 @@ def _pagina_configuracao() -> None:
                 instrucoes_gerais=geral, areas=areas_edit, capitulos=capitulos_edit
             )
         )
-        st.success("Guardado.")
+        st.toast("Instruções guardadas.")
     if c2.button("Restaurar padrão"):
         guardar_instrucoes(instrucoes_default())
         st.rerun()
