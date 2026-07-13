@@ -489,10 +489,29 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
 
     pdf = caminho_pdf_para_docx(aluno.ficheiro)
     erro_pdf: str | None = None
-    if not pdf.exists():
+
+    if EM_STREAMLIT_CLOUD:
+        # Na cloud não há Word/LibreOffice — só PDF já existente ou HTML.
+        if pdf.exists():
+            pdf_bytes = pdf.read_bytes()
+            try:
+                from streamlit_pdf_viewer import pdf_viewer
+
+                pdf_viewer(pdf_bytes, height=700, zoom_level=1.5, key=f"pdfview_{aluno.id}")
+            except Exception:
+                st.info("Use o botão abaixo para descarregar o PDF.")
+            st.download_button(
+                "Descarregar PDF",
+                data=pdf_bytes,
+                file_name=pdf.name,
+                mime="application/pdf",
+                key=f"dl_pdf_{aluno.id}",
+            )
+            return
+    elif not pdf.exists():
         pdf, erro_pdf = _gerar_pdf_seguro(docx)
 
-    if pdf and pdf.exists():
+    if not EM_STREAMLIT_CLOUD and pdf and pdf.exists():
         pdf_bytes = pdf.read_bytes()
         try:
             from streamlit_pdf_viewer import pdf_viewer
@@ -512,12 +531,17 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
         )
         return
 
-    if erro_pdf:
+    if erro_pdf and not EM_STREAMLIT_CLOUD:
         st.warning(erro_pdf)
 
     html_doc, erro_html = docx_para_html(docx)
     if html_doc:
-        st.caption("Pré-visualização HTML (alternativa quando PDF não está disponível).")
+        legenda = (
+            "Pré-visualização do relatório (HTML)."
+            if EM_STREAMLIT_CLOUD
+            else "Pré-visualização HTML (alternativa quando PDF não está disponível)."
+        )
+        st.caption(legenda)
         st.markdown(
             f'<div style="max-height:700px;overflow:auto;border:1px solid #e2e8f0;'
             f'padding:1rem;border-radius:8px;background:#fff">{html_doc}</div>',
@@ -535,9 +559,8 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
     )
 
     if EM_STREAMLIT_CLOUD:
-        st.info(
-            "PDF com formatação exacta só no **PC com Word ou LibreOffice**. "
-            "Online use a pré-visualização HTML ou descarregue o .docx."
+        st.caption(
+            "Online mostra-se em HTML. Para PDF com formatação exacta, use a app no **PC**."
         )
     elif not html_doc:
         st.caption(
