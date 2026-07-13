@@ -22,6 +22,7 @@ from app.app_settings import (
     titulo_app,
 )
 from app.auth import AuthStorage, Utilizador
+from app.backup import descricao_armazenamento, exportar_backup, importar_backup
 from app.config import ACTA_PATH, EM_STREAMLIT_CLOUD, NOTA_MAXIMA, RELATORIOS_DIR
 from app.models import (
     AREA_LABELS,
@@ -855,12 +856,64 @@ def _pagina_nomes_alunos() -> None:
     st.divider()
 
 
+def _pagina_backup_dados(sessao: dict) -> None:
+    if sessao["role"] != "admin":
+        return
+    st.header("Dados e sincronização")
+    st.caption(
+        "O **PC local** e o **Streamlit Cloud** são instalações separadas — não partilham "
+        "dados automaticamente. Use backup para copiar alunos, notas e relatórios entre os dois."
+    )
+    st.info(f"Armazenamento actual: **{descricao_armazenamento()}**")
+
+    col_dl, col_up = st.columns(2)
+    with col_dl:
+        try:
+            zip_bytes = exportar_backup()
+            st.download_button(
+                "⬇ Exportar backup (zip)",
+                data=zip_bytes,
+                file_name=f"avaliapap_backup_{datetime.now():%Y%m%d_%H%M}.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="dl_backup_dados",
+            )
+        except Exception as exc:
+            st.error(f"Erro ao exportar: {exc}")
+    with col_up:
+        upload = st.file_uploader(
+            "Importar backup",
+            type=["zip"],
+            key="upload_backup_dados",
+            label_visibility="collapsed",
+        )
+        if upload and st.button("Restaurar backup", type="primary", key="btn_import_backup"):
+            try:
+                n, avisos = importar_backup(upload.read())
+                st.success(f"Backup restaurado ({n} ficheiros). A recarregar…")
+                for aviso in avisos:
+                    st.warning(aviso)
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+    st.caption(
+        "**PC → Cloud:** exporte no PC, importe na app online (Definições). "
+        "**Cloud → PC:** exporte online antes do reboot, importe no PC."
+    )
+    st.divider()
+
+
 def _pagina_configuracao() -> None:
     sessao = _sessao_auth()
     if sessao:
         _pagina_configuracao_app(sessao)
 
     _pagina_nomes_alunos()
+
+    sessao = _sessao_auth()
+    if sessao:
+        _pagina_backup_dados(sessao)
 
     st.header("Instruções de avaliação")
     instr = carregar_instrucoes()
@@ -2085,6 +2138,7 @@ with st.sidebar:
     if st.button("Verificar motor IA", use_container_width=True, key="btn_verificar_ia"):
         st.session_state.pop("_ia_status", None)
         st.rerun()
+    st.caption(descricao_armazenamento())
     st.caption("Use iniciar.bat na Drive da escola.")
 
 alunos = storage.listar_alunos()
