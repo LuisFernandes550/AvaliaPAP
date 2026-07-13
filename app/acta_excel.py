@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from app.config import ACTA_PATH
+from app.config import ACTA_MODELO_PATH, ACTA_PATH
 from app.models import CriterioAvaliacao
 from app.temas_pap import tema_para_nome
 
@@ -64,6 +64,17 @@ DEFAULT_AREA = "Ciências Informáticas (481)"
 DEFAULT_CURSO = "Técnico de Gestão e Programação de Sistemas Informáticos"
 DEFAULT_SAIDA = "Técnico de Gestão e Programação de Sistemas Informáticos"
 CELULAS_VALIDACAO = frozenset({"D10", "D11", "D12"})
+
+
+def garantir_acta() -> bool:
+    """Copia o modelo da Acta para data/export/ se ainda não existir."""
+    if ACTA_PATH.exists():
+        return True
+    if not ACTA_MODELO_PATH.exists():
+        return False
+    ACTA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ACTA_MODELO_PATH, ACTA_PATH)
+    return True
 
 
 def _normalizar_nome(nome: str) -> str:
@@ -392,8 +403,10 @@ def sincronizar_acta(
     - Folhas individuais: uma por aluno (reutilizando os separadores existentes)
     """
     avisos: list[str] = []
-    if not ACTA_PATH.exists():
-        avisos.append(f"Ficheiro Acta não encontrado em {ACTA_PATH}.")
+    if not garantir_acta():
+        avisos.append(
+            f"Ficheiro Acta não encontrado. Modelo em falta: {ACTA_MODELO_PATH}."
+        )
         return ResultadoSincronizacaoActa(0, 0, ACTA_PATH, b"", avisos)
 
     alunos_ordem = [a for a in alunos if a.id is not None]

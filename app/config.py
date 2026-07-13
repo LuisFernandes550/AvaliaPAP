@@ -33,6 +33,7 @@ DB_PATH = DATA_DIR / "pap.db"
 INSTRUCOES_PATH = CONFIG_DIR / "instrucoes.json"
 APP_SETTINGS_PATH = CONFIG_DIR / "app.json"
 NOMES_ALUNOS_PATH = CONFIG_DIR / "nomes_alunos.json"
+ACTA_MODELO_PATH = BASE_DIR / "assets" / "Acta_Pap2526.xlsx"
 ACTA_PATH = EXPORT_DIR / "Acta_Pap2526.xlsx"
 
 for pasta in (DATA_DIR, RELATORIOS_DIR, PDF_DIR, CONFIG_DIR, EXPORT_DIR):

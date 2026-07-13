@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, JsCode
 
 from app.ai_evaluator import avaliar_relatorio, ia_disponivel, resumir_capitulos
-from app.acta_excel import sincronizar_acta
+from app.acta_excel import garantir_acta, sincronizar_acta
 from app.app_settings import (
     TITULO_PADRAO,
     ConfiguracaoApp,
@@ -2014,8 +2014,10 @@ def _pagina_resumo(alunos: list[AlunoRelatorio]) -> None:
             st.success(msg)
 
         acta_bytes = st.session_state.get("_acta_bytes")
-        if acta_bytes is None and ACTA_PATH.exists():
-            acta_bytes = ACTA_PATH.read_bytes()
+        if acta_bytes is None:
+            garantir_acta()
+            if ACTA_PATH.exists():
+                acta_bytes = ACTA_PATH.read_bytes()
         if acta_bytes:
             st.download_button(
                 "Descarregar Acta",
