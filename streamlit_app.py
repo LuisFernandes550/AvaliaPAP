@@ -540,18 +540,14 @@ def _renderizar_criterio_editavel(
 
 
 def _renderizar_avaliacoes_editaveis(aluno: AlunoRelatorio, avaliacoes: dict) -> None:
-    for secao in SecaoAvaliacao:
-        pct = int(SECAO_PONDERACAO[secao] * 100)
-        st.markdown(f"**{SECAO_LABELS[secao]}** ({pct}%)")
-        if secao == SecaoAvaliacao.RELATORIO:
-            st.caption("Critérios marcados abaixo são avaliados pela IA a partir do relatório.")
-        else:
-            st.caption("Preenchimento manual (avaliação presencial do projeto ou da defesa).")
-        for criterio in CRITERIOS_POR_SECAO[secao]:
-            if secao == SecaoAvaliacao.RELATORIO and criterio == CRITERIO_MANUAL:
-                st.caption("Critério manual (professor)")
-            _renderizar_criterio_editavel(aluno, criterio, avaliacoes)
-        st.divider()
+    secao = SecaoAvaliacao.RELATORIO
+    pct = int(SECAO_PONDERACAO[secao] * 100)
+    st.markdown(f"**{SECAO_LABELS[secao]}** ({pct}%)")
+    st.caption("Critérios avaliados pela IA a partir do relatório (excepto o marcado como manual).")
+    for criterio in CRITERIOS_POR_SECAO[secao]:
+        if criterio == CRITERIO_MANUAL:
+            st.caption("Critério manual (professor)")
+        _renderizar_criterio_editavel(aluno, criterio, avaliacoes)
 
 
 def _nota_atual(aluno: AlunoRelatorio, criterio: CriterioAvaliacao, avaliacoes: dict):
@@ -697,10 +693,10 @@ def _renderizar_tab_aluno(aluno: AlunoRelatorio) -> None:
     with col_a:
         _metrica("Relatório", aluno.nome, alinhar="left")
     with col_b:
-        media = _media_atual(aluno, avaliacoes)
+        media_rel = media_secao_arredondada(avaliacoes, SecaoAvaliacao.RELATORIO)
         _metrica(
-            "Avaliação final",
-            f"{media:.1f}/{NOTA_MAXIMA}" if media is not None else "-",
+            "Nota relatório",
+            f"{media_rel}/{NOTA_MAXIMA}" if media_rel is not None else "-",
         )
     with col_c:
         st.markdown(
@@ -731,7 +727,7 @@ def _renderizar_tab_aluno(aluno: AlunoRelatorio) -> None:
                     st.error(str(exc))
 
     st.divider()
-    st.subheader("Avaliação (grelha oficial)")
+    st.subheader("Avaliação do relatório")
     avaliacoes = storage.obter_avaliacoes(aluno.id)
     _renderizar_avaliacoes_editaveis(aluno, avaliacoes)
 
@@ -2079,8 +2075,8 @@ else:
     st.caption(f"{len(alunos)} alunos — expande cada um para avaliar ou ver detalhes.")
     for aluno in alunos:
         av = storage.obter_avaliacoes(aluno.id)
-        media = _media_atual(aluno, av)
-        media_txt = f" — {media:.1f} val." if media is not None else ""
+        media_rel = media_secao_arredondada(av, SecaoAvaliacao.RELATORIO)
+        media_txt = f" — {media_rel} val." if media_rel is not None else ""
         rotulo = f"{aluno.nome}{media_txt}"
         with st.expander(rotulo, expanded=False):
             _renderizar_tab_aluno(aluno)
