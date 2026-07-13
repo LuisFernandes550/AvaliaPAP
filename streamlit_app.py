@@ -810,7 +810,7 @@ def _pagina_configuracao_app(sessao: dict) -> None:
     c1, _ = st.columns(2)
     if c1.button("Guardar título", type="primary", key="guardar_titulo_app"):
         guardar_configuracao_app(ConfiguracaoApp(titulo=titulo.strip() or TITULO_PADRAO))
-        st.toast("Título guardado.")
+        st.success("Título guardado.")
     st.divider()
 
 
@@ -863,7 +863,7 @@ def _pagina_nomes_alunos() -> None:
             st.error("Indique pelo menos um aluno.")
         else:
             guardar_nomes_turma(novos)
-            st.toast("Nomes guardados.")
+            st.success("Nomes guardados.")
     if c2.button("Aplicar aos alunos importados", key="aplicar_nomes_turma"):
         novos = [
             AlunoTurma(
@@ -938,11 +938,17 @@ def _pagina_backup_dados(sessao: dict) -> None:
             use_container_width=True,
             key="btn_gen_backup_completo",
         ):
-            try:
-                with st.spinner("A gerar backup completo…"):
-                    st.session_state["_backup_completo_bytes"] = exportar_backup(completo=True)
-            except Exception as exc:
-                st.error(f"Erro ao exportar: {exc}")
+            if EM_STREAMLIT_CLOUD:
+                st.error(
+                    "Backup completo só no PC local (inclui .docx — demasiado grande para a cloud). "
+                    "Use **backup essencial** ou faça o download no PC."
+                )
+            else:
+                try:
+                    with st.spinner("A gerar backup completo…"):
+                        st.session_state["_backup_completo_bytes"] = exportar_backup(completo=True)
+                except Exception as exc:
+                    st.error(f"Erro ao exportar: {exc}")
         zip_completo = st.session_state.get("_backup_completo_bytes")
         if zip_completo:
             mb_comp = len(zip_completo) / (1024 * 1024)
@@ -1031,7 +1037,7 @@ def _pagina_configuracao() -> None:
                 instrucoes_gerais=geral, areas=areas_edit, capitulos=capitulos_edit
             )
         )
-        st.toast("Instruções guardadas.")
+        st.success("Instruções guardadas.")
     if c2.button("Restaurar padrão"):
         guardar_instrucoes(instrucoes_default())
         st.rerun()
