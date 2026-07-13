@@ -415,6 +415,9 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
     pdf = caminho_pdf_para_docx(aluno.ficheiro)
     esperado = pdf.name
 
+    if msg := st.session_state.pop(f"_pdf_save_ok_{aluno.id}", None):
+        st.success(msg)
+
     upload = st.file_uploader(
         f"Carregar PDF ({esperado})",
         type=["pdf"],
@@ -422,7 +425,9 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
     )
     if upload and st.button("Guardar PDF", key=f"save_pdf_{aluno.id}"):
         guardar_pdf(upload.getvalue(), esperado)
-        st.toast("PDF guardado.")
+        st.session_state[f"_pdf_save_ok_{aluno.id}"] = (
+            f"PDF **{esperado}** guardado com sucesso."
+        )
         st.rerun()
 
     if pdf.exists():
@@ -478,6 +483,23 @@ def _importar_pdfs(ficheiros) -> tuple[int, list[str]]:
                 f"(esperado RelatorioPAP_Nome.pdf igual ao .docx)."
             )
     return importados, avisos
+
+
+def _mostrar_resultado_import_pdf() -> None:
+    resultado = st.session_state.pop("_pdf_import_result", None)
+    if not resultado:
+        return
+    n = resultado["importados"]
+    total = resultado["total"]
+    if n == 0:
+        st.warning("Importação terminada — nenhum PDF foi guardado.")
+    else:
+        st.success(
+            f"Importação concluída: **{n}** de **{total}** PDF(s) guardado(s) "
+            "em `data/relatorios/pdf/`."
+        )
+    for aviso in resultado.get("avisos", []):
+        st.warning(aviso)
 
 
 def _importar_ficheiros(ficheiros) -> int:
@@ -2161,13 +2183,18 @@ with st.sidebar:
         st.success(f"{_importar_ficheiros(uploads)} importado(s).")
         st.rerun()
     st.subheader("PDFs de pré-visualização")
+    _mostrar_resultado_import_pdf()
     st.caption("Nome igual ao .docx: RelatorioPAP_Nome.pdf")
     uploads_pdf = st.file_uploader("Extensão (.pdf)", type=["pdf"], accept_multiple_files=True)
     if uploads_pdf and st.button("Importar PDFs", type="secondary"):
-        n, avisos = _importar_pdfs(uploads_pdf)
-        st.success(f"{n} PDF(s) guardado(s).")
-        for aviso in avisos:
-            st.warning(aviso)
+        total = len(uploads_pdf)
+        with st.spinner(f"A importar {total} PDF(s)…"):
+            n, avisos = _importar_pdfs(uploads_pdf)
+        st.session_state["_pdf_import_result"] = {
+            "importados": n,
+            "total": total,
+            "avisos": avisos,
+        }
         st.rerun()
     st.divider()
     alunos = storage.listar_alunos()
