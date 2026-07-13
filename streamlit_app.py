@@ -43,7 +43,7 @@ from app.models import (
     media_secao_arredondada,
     nota_final_arredondada,
 )
-from app.pdf_converter import caminho_pdf_para_docx, docx_para_html, gerar_pdf
+from app.pdf_converter import caminho_pdf_para_docx, guardar_pdf
 from app.report_parser import analisar_relatorio
 from app.temas_pap import colunas_turma_ordenadas, tema_para_nome
 from app.nomes_alunos import (
@@ -407,11 +407,44 @@ def _inicializar_instrucoes() -> None:
         st.session_state.instrucoes = instr
 
 
-def _gerar_pdf_seguro(docx: Path) -> tuple[Path | None, str | None]:
-    resultado = gerar_pdf(docx)
-    if isinstance(resultado, tuple):
-        return resultado
-    return resultado, None
+def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
+    if not st.toggle("Mostrar pré-visualização do PDF", key=f"showpdf_{aluno.id}"):
+        st.caption("Ativa para ver o PDF carregado.")
+        return
+
+    pdf = caminho_pdf_para_docx(aluno.ficheiro)
+    esperado = pdf.name
+
+    upload = st.file_uploader(
+        f"Carregar PDF ({esperado})",
+        type=["pdf"],
+        key=f"upload_pdf_{aluno.id}",
+    )
+    if upload and st.button("Guardar PDF", key=f"save_pdf_{aluno.id}"):
+        guardar_pdf(upload.getvalue(), esperado)
+        st.toast("PDF guardado.")
+        st.rerun()
+
+    if pdf.exists():
+        pdf_bytes = pdf.read_bytes()
+        try:
+            from streamlit_pdf_viewer import pdf_viewer
+
+            pdf_viewer(pdf_bytes, height=700, zoom_level=1.5, key=f"pdfview_{aluno.id}")
+        except Exception:
+            st.info("Use o botão abaixo para descarregar o PDF.")
+        st.download_button(
+            "Descarregar PDF",
+            data=pdf_bytes,
+            file_name=pdf.name,
+            mime="application/pdf",
+            key=f"dl_pdf_{aluno.id}",
+        )
+    else:
+        st.info(
+            f"Nenhum PDF carregado. Use o campo acima ou importe **{esperado}** "
+            "na barra lateral (secção PDF)."
+        )
 
 
 def _apagar_ficheiros_aluno(aluno: AlunoRelatorio) -> list[str]:
@@ -424,6 +457,27 @@ def _apagar_ficheiros_aluno(aluno: AlunoRelatorio) -> list[str]:
         except OSError as exc:
             avisos.append(f"Não foi possível apagar {p.name}: {exc}")
     return avisos
+
+
+def _importar_pdfs(ficheiros) -> tuple[int, list[str]]:
+    """Guarda PDFs em data/relatorios/pdf/ (nome = RelatorioPAP_Nome.pdf)."""
+    importados = 0
+    avisos: list[str] = []
+    alunos = storage.listar_alunos()
+    stems_alunos = {Path(a.ficheiro).stem.casefold() for a in alunos}
+
+    for ficheiro in ficheiros:
+        if not ficheiro.name.lower().endswith(".pdf"):
+            continue
+        guardar_pdf(ficheiro.getvalue(), ficheiro.name)
+        importados += 1
+        stem = Path(ficheiro.name).stem.casefold()
+        if alunos and stem not in stems_alunos:
+            avisos.append(
+                f"{ficheiro.name}: sem aluno correspondente "
+                f"(esperado RelatorioPAP_Nome.pdf igual ao .docx)."
+            )
+    return importados, avisos
 
 
 def _importar_ficheiros(ficheiros) -> int:
@@ -472,77 +526,6 @@ def _reanalisar_capa(aluno: AlunoRelatorio) -> None:
     )
     st.toast("Capa reanalisada.")
     st.rerun()
-
-
-def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
-    if not st.toggle("Mostrar pré-visualização do relatório", key=f"showpdf_{aluno.id}"):
-        st.caption("Ativa para ver o relatório (PDF ou HTML).")
-        return
-
-    docx = RELATORIOS_DIR / aluno.ficheiro
-    if not docx.exists():
-        st.warning(
-            "Ficheiro .docx não encontrado. Importe o relatório na barra lateral "
-            "ou restaure um **backup completo** (o essencial não inclui .docx)."
-        )
-        return
-
-    pdf = caminho_pdf_para_docx(aluno.ficheiro)
-    erro_pdf: str | None = None
-    if not pdf.exists():
-        with st.spinner("A gerar PDF…"):
-            pdf, erro_pdf = _gerar_pdf_seguro(docx)
-
-    if pdf and pdf.exists():
-        if EM_STREAMLIT_CLOUD:
-            st.caption(
-                "PDF online (formatação aproximada). No PC, Word/LibreOffice dá PDF exacto."
-            )
-        pdf_bytes = pdf.read_bytes()
-        try:
-            from streamlit_pdf_viewer import pdf_viewer
-
-            pdf_viewer(pdf_bytes, height=700, zoom_level=1.5, key=f"pdfview_{aluno.id}")
-        except Exception:
-            st.info(
-                "Pré-visualização inline indisponível. "
-                "Use o botão abaixo para descarregar o PDF."
-            )
-        st.download_button(
-            "Descarregar PDF",
-            data=pdf_bytes,
-            file_name=pdf.name,
-            mime="application/pdf",
-            key=f"dl_pdf_{aluno.id}",
-        )
-        return
-
-    if erro_pdf:
-        st.warning(erro_pdf)
-
-    html_doc, erro_html = docx_para_html(docx)
-    if html_doc:
-        st.caption("Pré-visualização HTML (alternativa se o PDF falhar).")
-        st.markdown(
-            f'<div style="max-height:700px;overflow:auto;border:1px solid #e2e8f0;'
-            f'padding:1rem;border-radius:8px;background:#fff">{html_doc}</div>',
-            unsafe_allow_html=True,
-        )
-    elif erro_html and not erro_pdf:
-        st.warning(erro_html)
-
-    st.download_button(
-        "Descarregar DOCX",
-        data=docx.read_bytes(),
-        file_name=docx.name,
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        key=f"dl_docx_{aluno.id}",
-    )
-
-    if not html_doc and not EM_STREAMLIT_CLOUD:
-        st.caption(
-            "Instale **Microsoft Word** ou **LibreOffice** no PC para PDF com formatação exacta."
-        )
 
 
 def _guardar_criterio_cb(aluno_id: int, criterio: CriterioAvaliacao) -> None:
@@ -912,7 +895,7 @@ def _pagina_backup_dados(sessao: dict) -> None:
                 mime="application/zip",
                 use_container_width=True,
                 key="dl_backup_essencial",
-                help="Base de dados, notas, configuração — ideal para PC ↔ Cloud (limite 200 MB).",
+                help="Base de dados, notas, configuração e PDFs — ideal para PC ↔ Cloud (limite 200 MB).",
             )
             zip_completo = exportar_backup(completo=True)
             mb_comp = len(zip_completo) / (1024 * 1024)
@@ -947,8 +930,8 @@ def _pagina_backup_dados(sessao: dict) -> None:
                 st.error(str(exc))
 
     st.caption(
-        "**Essencial** — alunos, notas, textos para IA (cabe online). "
-        "**Completo** — inclui .docx (só PC; na cloud use essencial + importe .docx na sidebar). "
+        "**Essencial** — alunos, notas, PDFs de pré-visualização (cabe online). "
+        "**Completo** — inclui .docx (só PC; na cloud importe .docx e PDF na sidebar). "
         "Limite upload Streamlit Cloud: **200 MB**."
     )
     st.divider()
@@ -2176,6 +2159,15 @@ with st.sidebar:
     uploads = st.file_uploader("Extensão (.docx)", type=["docx"], accept_multiple_files=True)
     if uploads and st.button("Importar", type="primary"):
         st.success(f"{_importar_ficheiros(uploads)} importado(s).")
+        st.rerun()
+    st.subheader("PDFs de pré-visualização")
+    st.caption("Nome igual ao .docx: RelatorioPAP_Nome.pdf")
+    uploads_pdf = st.file_uploader("Extensão (.pdf)", type=["pdf"], accept_multiple_files=True)
+    if uploads_pdf and st.button("Importar PDFs", type="secondary"):
+        n, avisos = _importar_pdfs(uploads_pdf)
+        st.success(f"{n} PDF(s) guardado(s).")
+        for aviso in avisos:
+            st.warning(aviso)
         st.rerun()
     st.divider()
     alunos = storage.listar_alunos()

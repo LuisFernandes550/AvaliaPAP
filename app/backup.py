@@ -8,15 +8,15 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from app.config import CONFIG_DIR, DATA_DIR, DB_PATH, EXPORT_DIR, RELATORIOS_DIR
+from app.config import CONFIG_DIR, DATA_DIR, DB_PATH, EXPORT_DIR, PDF_DIR, RELATORIOS_DIR
 
 _PASTAS_COMPLETAS = (CONFIG_DIR, RELATORIOS_DIR, EXPORT_DIR)
-_PASTAS_ESSENCIAIS = (CONFIG_DIR, EXPORT_DIR)
+_PASTAS_ESSENCIAIS = (CONFIG_DIR, EXPORT_DIR, PDF_DIR)
 _FICHEIROS = (DB_PATH,)
 
 
 def exportar_backup(*, completo: bool = False) -> bytes:
-    """Cria zip com bd + config; opcionalmente inclui relatórios .docx/.pdf."""
+    """Cria zip com bd, config e PDFs; completo inclui também .docx."""
     pastas = _PASTAS_COMPLETAS if completo else _PASTAS_ESSENCIAIS
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
