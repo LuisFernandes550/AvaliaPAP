@@ -39,6 +39,8 @@ CRITERIOS_LLM = [c for c in CRITERIOS_IA if c != CRITERIO_PERTINENCIA]
 
 
 def ollama_disponivel() -> bool:
+    if getattr(_config, "EM_STREAMLIT_CLOUD", False):
+        return False
     try:
         req = urllib.request.Request(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=8) as resp:

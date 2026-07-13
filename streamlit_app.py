@@ -22,7 +22,7 @@ from app.app_settings import (
     titulo_app,
 )
 from app.auth import AuthStorage, Utilizador
-from app.config import ACTA_PATH, NOTA_MAXIMA, RELATORIOS_DIR
+from app.config import ACTA_PATH, EM_STREAMLIT_CLOUD, NOTA_MAXIMA, RELATORIOS_DIR
 from app.models import (
     AREA_LABELS,
     CAPITULOS_PAP,
@@ -384,6 +384,12 @@ def _ia_status() -> tuple[bool, str]:
 
 
 def _aviso_ia_indisponivel() -> None:
+    if EM_STREAMLIT_CLOUD:
+        st.warning(
+            "Motor IA indisponível online. Configure **Settings → Secrets** no Streamlit Cloud "
+            "com `LLM_PROVIDER = \"gemini\"` e `GEMINI_API_KEY` (Ollama não funciona na cloud)."
+        )
+        return
     st.warning(
         "Motor IA indisponível. Opções: **Ollama** (local, gratuito — ollama.com), "
         "**ChatGPT** ou **Gemini** (chaves no `.env`). "

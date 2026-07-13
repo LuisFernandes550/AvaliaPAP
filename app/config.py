@@ -9,6 +9,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
+def _ler_config(chave: str, default: str = "") -> str:
+    """Lê variável do ambiente ou dos Secrets do Streamlit Cloud."""
+    valor = os.getenv(chave, "").strip()
+    if valor:
+        return valor
+    try:
+        import streamlit as st
+
+        if chave in st.secrets:
+            return str(st.secrets[chave]).strip()
+    except Exception:
+        pass
+    return default
+
+
 def _em_streamlit_cloud() -> bool:
     if os.getenv("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud":
         return True
@@ -22,6 +37,22 @@ def _resolver_data_dir() -> Path:
     if _em_streamlit_cloud():
         return Path("/tmp/avaliapap/data")
     return BASE_DIR / "data"
+
+
+EM_STREAMLIT_CLOUD = _em_streamlit_cloud()
+
+
+def _resolver_llm_provider() -> str:
+    explicito = _ler_config("LLM_PROVIDER")
+    if explicito:
+        return explicito.lower()
+    if EM_STREAMLIT_CLOUD:
+        if _ler_config("GEMINI_API_KEY"):
+            return "gemini"
+        if _ler_config("OPENAI_API_KEY"):
+            return "openai"
+        return "auto"
+    return "ollama"
 
 
 DATA_DIR = _resolver_data_dir()
@@ -40,20 +71,20 @@ for pasta in (DATA_DIR, RELATORIOS_DIR, PDF_DIR, CONFIG_DIR, EXPORT_DIR):
     pasta.mkdir(parents=True, exist_ok=True)
 
 # Motor de IA: ollama (local, gratuito) | openai (ChatGPT) | gemini | auto
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+LLM_PROVIDER = _resolver_llm_provider()
+OLLAMA_BASE_URL = _ler_config("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = _ler_config("OLLAMA_MODEL", "llama3.2")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY = _ler_config("OPENAI_API_KEY")
+OPENAI_MODEL = _ler_config("OPENAI_MODEL", "gpt-4o-mini")
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_API_KEY = _ler_config("GEMINI_API_KEY")
+GEMINI_MODEL = _ler_config("GEMINI_MODEL", "gemini-2.0-flash")
 
 NOTA_MINIMA = 1
 NOTA_MAXIMA = 20
 
 # Autenticação — altere no .env antes do primeiro arranque
-ADMIN_USERNAME = os.getenv("PAP_ADMIN_USER", "admin")
-ADMIN_PASSWORD = os.getenv("PAP_ADMIN_PASSWORD", "admin")
-ADMIN_NOME = os.getenv("PAP_ADMIN_NOME", "Administrador")
+ADMIN_USERNAME = _ler_config("PAP_ADMIN_USER", "admin")
+ADMIN_PASSWORD = _ler_config("PAP_ADMIN_PASSWORD", "admin")
+ADMIN_NOME = _ler_config("PAP_ADMIN_NOME", "Administrador")
