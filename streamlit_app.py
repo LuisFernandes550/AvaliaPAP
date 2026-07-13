@@ -43,7 +43,7 @@ from app.models import (
     media_secao_arredondada,
     nota_final_arredondada,
 )
-from app.pdf_converter import caminho_pdf_para_docx, gerar_pdf
+from app.pdf_converter import caminho_pdf_para_docx, docx_para_html, gerar_pdf
 from app.report_parser import analisar_relatorio
 from app.temas_pap import colunas_turma_ordenadas, tema_para_nome
 from app.nomes_alunos import (
@@ -475,16 +475,22 @@ def _reanalisar_capa(aluno: AlunoRelatorio) -> None:
 
 
 def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
-    if not st.toggle("Mostrar pré-visualização do PDF", key=f"showpdf_{aluno.id}"):
-        st.caption("Ativa para ver o PDF (evita recarregar em cada alteração).")
+    if not st.toggle("Mostrar pré-visualização do relatório", key=f"showpdf_{aluno.id}"):
+        st.caption("Ativa para ver o relatório (PDF ou HTML).")
         return
 
     docx = RELATORIOS_DIR / aluno.ficheiro
+    if not docx.exists():
+        st.warning(
+            "Ficheiro .docx não encontrado. Importe o relatório na barra lateral "
+            "ou restaure um **backup completo** (o essencial não inclui .docx)."
+        )
+        return
+
     pdf = caminho_pdf_para_docx(aluno.ficheiro)
-    if not pdf.exists() and docx.exists():
-        pdf, erro = _gerar_pdf_seguro(docx)
-        if erro:
-            st.warning(erro)
+    erro_pdf: str | None = None
+    if not pdf.exists():
+        pdf, erro_pdf = _gerar_pdf_seguro(docx)
 
     if pdf and pdf.exists():
         pdf_bytes = pdf.read_bytes()
@@ -495,7 +501,7 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
         except Exception:
             st.info(
                 "Pré-visualização inline indisponível. "
-                "Use o botão abaixo para abrir/descarregar o PDF."
+                "Use o botão abaixo para descarregar o PDF."
             )
         st.download_button(
             "Descarregar PDF",
@@ -504,10 +510,39 @@ def _mostrar_pdf(aluno: AlunoRelatorio) -> None:
             mime="application/pdf",
             key=f"dl_pdf_{aluno.id}",
         )
-    else:
-        st.warning(
-            "Não foi possível gerar PDF. Requer Microsoft Word instalado no Windows. "
-            "Pode abrir o ficheiro .docx manualmente em data/relatorios/."
+        return
+
+    if erro_pdf:
+        st.warning(erro_pdf)
+
+    html_doc, erro_html = docx_para_html(docx)
+    if html_doc:
+        st.caption("Pré-visualização HTML (alternativa quando PDF não está disponível).")
+        st.markdown(
+            f'<div style="max-height:700px;overflow:auto;border:1px solid #e2e8f0;'
+            f'padding:1rem;border-radius:8px;background:#fff">{html_doc}</div>',
+            unsafe_allow_html=True,
+        )
+    elif erro_html and not erro_pdf:
+        st.warning(erro_html)
+
+    st.download_button(
+        "Descarregar DOCX",
+        data=docx.read_bytes(),
+        file_name=docx.name,
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        key=f"dl_docx_{aluno.id}",
+    )
+
+    if EM_STREAMLIT_CLOUD:
+        st.info(
+            "PDF com formatação exacta só no **PC com Word ou LibreOffice**. "
+            "Online use a pré-visualização HTML ou descarregue o .docx."
+        )
+    elif not html_doc:
+        st.caption(
+            "Instale **Microsoft Word** ou **LibreOffice** no PC para gerar PDF. "
+            f"O .docx está em `{docx}`."
         )
 
 
