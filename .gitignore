@@ -1,9 +1,4 @@
-# Dados locais (alunos, avaliações, relatórios)
-data/
-pap.db
-*.db
-
-# Segredos
+# Segredos — nunca commitar
 .env
 
 # Python
@@ -16,5 +11,8 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Backups
+# Backups temporários
 *.bak
+
+# Base de dados legacy na raiz do projecto (usar data/pap.db)
+/pap.db
