@@ -1295,6 +1295,10 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
         for aviso in sync_res.get("avisos", []):
             st.warning(aviso)
 
+    msg_juri = st.session_state.pop("_apresentacoes_msg", None)
+    if msg_juri:
+        getattr(st, msg_juri.get("tipo", "success"))(msg_juri["texto"])
+
     col_link, col_qr, col_ref, col_sync = st.columns([2.6, 1, 1, 1])
     url_form = url_formulario_juri()
     with col_link:
@@ -1367,9 +1371,15 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                     aluno, config, pd.DataFrame(editado), avaliacoes_juri
                 )
                 if n:
-                    st.success(f"{n} nota(s) actualizada(s).")
+                    st.session_state["_apresentacoes_msg"] = {
+                        "tipo": "success",
+                        "texto": f"✓ {aluno.nome}: {n} nota(s) atualizada(s).",
+                    }
                 else:
-                    st.info("Sem alterações.")
+                    st.session_state["_apresentacoes_msg"] = {
+                        "tipo": "info",
+                        "texto": f"{aluno.nome}: sem alterações para guardar.",
+                    }
                 st.rerun()
             if c2.button(
                 "Limpar notas deste aluno",
@@ -1382,7 +1392,10 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                     CRITERIOS_POR_SECAO[SecaoAvaliacao.APRESENTACAO],
                 )
                 st.session_state.pop("_acta_bytes", None)
-                st.success(f"Notas de apresentação de {aluno.nome} removidas.")
+                st.session_state["_apresentacoes_msg"] = {
+                    "tipo": "success",
+                    "texto": f"Notas de apresentação de {aluno.nome} removidas.",
+                }
                 st.rerun()
 
 
