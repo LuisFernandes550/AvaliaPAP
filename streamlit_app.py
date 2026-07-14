@@ -1834,11 +1834,13 @@ def _rotulo_criterio_resumo(criterio: CriterioAvaliacao) -> str:
 
 def _iniciais_nome(nome: str) -> str:
     partes = [p for p in nome.split() if p]
-    if len(partes) >= 3:
-        return "".join(p[0].upper() for p in partes[:3])
+    if not partes:
+        return ""
+    if len(partes) == 1:
+        return partes[0][:3].upper()
     if len(partes) == 2:
-        return (partes[0][0] + partes[1][0] + (partes[1][1] if len(partes[1]) > 1 else partes[1][0])).upper()
-    return nome[:3].upper()
+        return (partes[0][0] + partes[1][0]).upper()
+    return (partes[0][0] + partes[1][0] + partes[-1][0]).upper()
 
 
 def _classe_nota(nota: float | int | None) -> str:
