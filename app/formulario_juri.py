@@ -85,14 +85,20 @@ def _impedir_teclado_nas_caixas() -> None:
     )
 
 
+_CHAVES_WIDGETS = ["juri_email", "juri_nome_sel", "juri_aluno_sel"] + [
+    f"juri_nota_{chave}" for chave, _ in CRITERIOS_FORM_APRESENTACAO
+]
+
+
 def _escolher_da_lista(
     label: str,
     opcoes: list[str],
     *,
     placeholder: str,
+    key: str,
 ) -> str | None:
     """Caixa de seleção sem pesquisa (não abre teclado no tablet)."""
-    kwargs: dict = {"index": None, "placeholder": placeholder}
+    kwargs: dict = {"index": None, "placeholder": placeholder, "key": key}
     try:
         return st.selectbox(label, opcoes, filter_mode=None, **kwargs)
     except TypeError:
@@ -124,11 +130,14 @@ def renderizar_formulario_juri(storage) -> None:
         st.success("Avaliação registada com sucesso. Pode submeter outra avaliação.")
 
     with st.form("form_juri_apresentacao", clear_on_submit=False):
-        email = st.text_input("Email", placeholder="seu.email@escola.pt")
+        email = st.text_input(
+            "Email", placeholder="seu.email@escola.pt", key="juri_email"
+        )
         juri = _escolher_da_lista(
             "Nome do júri *",
             config.juris,
             placeholder="Seleccione o seu nome",
+            key="juri_nome_sel",
         )
         opcoes_alunos = {a.nome: a.id for a in alunos}
         nomes_alunos = list(opcoes_alunos.keys())
@@ -136,6 +145,7 @@ def renderizar_formulario_juri(storage) -> None:
             "Aluno a avaliar *",
             nomes_alunos,
             placeholder="Seleccione o aluno",
+            key="juri_aluno_sel",
         )
         st.divider()
         notas: dict[str, int] = {}
@@ -146,6 +156,7 @@ def renderizar_formulario_juri(storage) -> None:
                 max_value=NOTA_MAXIMA_FORM,
                 value=NOTA_MINIMA_FORM,
                 step=1,
+                key=f"juri_nota_{chave}",
             )
         col_env, col_lim = st.columns(2)
         enviar = col_env.form_submit_button("Enviar", type="primary", use_container_width=True)
@@ -154,6 +165,8 @@ def renderizar_formulario_juri(storage) -> None:
     _impedir_teclado_nas_caixas()
 
     if limpar:
+        for chave_widget in _CHAVES_WIDGETS:
+            st.session_state.pop(chave_widget, None)
         st.rerun()
 
     if enviar:
