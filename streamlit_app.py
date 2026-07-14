@@ -70,9 +70,10 @@ from app.nomes_alunos import (
     AlunoTurma,
     aplicar_nomes_a_alunos,
     carregar_nomes_turma,
+    gerar_chave_ficheiro,
     guardar_nomes_turma,
+    importar_nomes_de_excel,
     nome_por_ficheiro,
-    nomes_turma_default,
 )
 from app.storage import (
     PapStorage,
@@ -935,6 +936,36 @@ def _pagina_nomes_alunos() -> None:
         "(texto que aparece no nome do .docx importado, ex.: `AdrianoSalucombo`). "
         "Use **Aplicar aos alunos importados** para corrigir nomes já na base de dados."
     )
+
+    with st.expander("Importar de Excel", expanded=not carregar_nomes_turma()):
+        st.caption(
+            "Carregue um ficheiro `.xlsx` com as colunas **Nome** e **Tema** "
+            "(uma linha por aluno). A **chave no ficheiro** é gerada automaticamente "
+            "a partir do nome (ex.: `Adriano Ricardo David Salucombo` → `AdrianoSalucombo`). "
+            "A importação substitui a tabela atual."
+        )
+        upload_xlsx = st.file_uploader(
+            "Ficheiro Excel (.xlsx)",
+            type=["xlsx"],
+            key="upload_nomes_excel",
+        )
+        if st.button("Importar do Excel", key="btn_importar_nomes_excel"):
+            if not upload_xlsx:
+                st.error("Selecione primeiro um ficheiro Excel.")
+            else:
+                try:
+                    importados = importar_nomes_de_excel(upload_xlsx.getvalue())
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Não foi possível ler o Excel: {exc}")
+                else:
+                    if not importados:
+                        st.warning("Não foram encontrados nomes no ficheiro.")
+                    else:
+                        guardar_nomes_turma(importados)
+                        st.session_state.pop("editor_nomes_turma", None)
+                        st.success(f"{len(importados)} aluno(s) importado(s) do Excel.")
+                        st.rerun()
+
     entries = carregar_nomes_turma()
     df = pd.DataFrame(
         [
@@ -944,7 +975,8 @@ def _pagina_nomes_alunos() -> None:
                 "Tema PAP": e.tema,
             }
             for e in entries
-        ]
+        ],
+        columns=["Nome completo", "Chave no ficheiro", "Tema PAP"],
     )
     edited = st.data_editor(
         df,
@@ -982,20 +1014,26 @@ def _pagina_nomes_alunos() -> None:
             st.success("Nomes ordenados alfabeticamente.")
             st.rerun()
     if c1.button("Guardar nomes", type="primary", key="guardar_nomes_turma"):
-        novos = [
-            AlunoTurma(
-                nome=str(row["Nome completo"]).strip(),
-                chave_ficheiro=str(row.get("Chave no ficheiro") or "").strip(),
-                tema=str(row.get("Tema PAP") or "").strip(),
+        novos = []
+        for _, row in edited.iterrows():
+            nome = str(row["Nome completo"]).strip()
+            if not nome:
+                continue
+            chave = str(row.get("Chave no ficheiro") or "").strip() or gerar_chave_ficheiro(nome)
+            novos.append(
+                AlunoTurma(
+                    nome=nome,
+                    chave_ficheiro=chave,
+                    tema=str(row.get("Tema PAP") or "").strip(),
+                )
             )
-            for _, row in edited.iterrows()
-            if str(row.get("Nome completo", "")).strip()
-        ]
         if not novos:
             st.error("Indique pelo menos um aluno.")
         else:
             guardar_nomes_turma(novos)
+            st.session_state.pop("editor_nomes_turma", None)
             st.success("Nomes guardados.")
+            st.rerun()
     if c2.button("Aplicar aos alunos importados", key="aplicar_nomes_turma"):
         novos = [
             AlunoTurma(
@@ -1018,9 +1056,10 @@ def _pagina_nomes_alunos() -> None:
         if len(avisos) > 10:
             st.caption(f"… e mais {len(avisos) - 10} avisos.")
         st.rerun()
-    if c3.button("Restaurar lista padrão", key="reset_nomes_turma"):
-        guardar_nomes_turma(nomes_turma_default())
-        st.success("Lista padrão restaurada.")
+    if c3.button("Limpar tabela", key="limpar_nomes_turma"):
+        guardar_nomes_turma([])
+        st.session_state.pop("editor_nomes_turma", None)
+        st.success("Tabela de nomes limpa.")
         st.rerun()
     st.divider()
 
