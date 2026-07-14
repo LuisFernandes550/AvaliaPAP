@@ -18,34 +18,34 @@ def _estilos_letra_maior() -> None:
     st.markdown(
         """
         <style>
-        section.main h3 { font-size: 1.9rem !important; }
+        section.main h3 { font-size: 1.65rem !important; }
         section.main .stCaption, section.main [data-testid="stCaptionContainer"] p {
+            font-size: 1rem !important;
+        }
+        div[data-testid="stForm"] label p { font-size: 1.1rem !important; }
+        div[data-testid="stForm"] input { font-size: 1.05rem !important; }
+        div[data-testid="stForm"] [data-baseweb="select"] div { font-size: 1.05rem !important; }
+        div[data-testid="stForm"] .stSlider label p { font-size: 1.15rem !important; }
+        div[data-testid="stForm"] [data-testid="stSliderThumbValue"] {
             font-size: 1.1rem !important;
         }
-        div[data-testid="stForm"] label p { font-size: 1.25rem !important; }
-        div[data-testid="stForm"] input { font-size: 1.2rem !important; }
-        div[data-testid="stForm"] [data-baseweb="select"] div { font-size: 1.2rem !important; }
-        div[data-testid="stForm"] .stSlider label p { font-size: 1.3rem !important; }
-        div[data-testid="stForm"] [data-testid="stSliderThumbValue"] {
-            font-size: 1.25rem !important;
-        }
-        div[data-testid="stForm"] button p { font-size: 1.3rem !important; }
+        div[data-testid="stForm"] button p { font-size: 1.15rem !important; }
         @media (max-width: 1200px) {
-            section.main h3 { font-size: 2.2rem !important; }
-            div[data-testid="stForm"] label p { font-size: 1.5rem !important; }
-            div[data-testid="stForm"] input { font-size: 1.45rem !important; }
+            section.main h3 { font-size: 1.9rem !important; }
+            div[data-testid="stForm"] label p { font-size: 1.3rem !important; }
+            div[data-testid="stForm"] input { font-size: 1.25rem !important; }
             div[data-testid="stForm"] [data-baseweb="select"] div {
-                font-size: 1.45rem !important;
+                font-size: 1.25rem !important;
             }
-            div[data-testid="stForm"] .stSlider label p { font-size: 1.6rem !important; }
+            div[data-testid="stForm"] .stSlider label p { font-size: 1.35rem !important; }
             div[data-testid="stForm"] [data-testid="stSliderThumbValue"],
             div[data-testid="stForm"] [data-testid="stTickBarMin"],
             div[data-testid="stForm"] [data-testid="stTickBarMax"] {
-                font-size: 1.45rem !important;
+                font-size: 1.25rem !important;
             }
-            div[data-testid="stForm"] button p { font-size: 1.55rem !important; }
+            div[data-testid="stForm"] button p { font-size: 1.35rem !important; }
             div[data-testid="stForm"] button {
-                min-height: 3.4rem !important;
+                min-height: 3.1rem !important;
             }
         }
         </style>

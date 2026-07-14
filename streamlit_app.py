@@ -26,6 +26,7 @@ from app.apresentacoes import (
     calcular_medias_criterio,
     carregar_config_juris,
     guardar_config_juris,
+    qrcode_formulario_juri_png,
     sincronizar_medias_para_acta,
     url_formulario_juri,
 )
@@ -1192,12 +1193,18 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
         f"({len(avaliacoes_juri)} registo(s))."
     )
 
-    col_link, col_ref, col_sync = st.columns([3, 1, 1])
+    col_link, col_qr, col_ref, col_sync = st.columns([2.6, 1, 1, 1])
     url_form = url_formulario_juri()
     with col_link:
         st.markdown("**Formulário dos júris** — partilhe este link:")
         st.code(url_form, language=None)
         st.link_button("Abrir formulário", url_form, use_container_width=False)
+    with col_qr:
+        qr_png = qrcode_formulario_juri_png(url_form)
+        if qr_png:
+            st.image(qr_png, caption="Ler para abrir", width=150)
+        else:
+            st.caption("QR code indisponível.")
     with col_ref:
         if st.button("Atualizar", use_container_width=True, key="btn_atualizar_apresentacoes"):
             st.rerun()

@@ -65,6 +65,21 @@ def url_formulario_juri() -> str:
     return f"{base.rstrip('/')}/?formulario=juri"
 
 
+def qrcode_formulario_juri_png(url: str | None = None, *, scale: int = 8) -> bytes | None:
+    """Devolve um QR code (PNG) para o link do formulário, ou None se indisponível."""
+    try:
+        import io
+
+        import segno
+    except ImportError:
+        return None
+
+    destino = url or url_formulario_juri()
+    buffer = io.BytesIO()
+    segno.make(destino, error="m").save(buffer, kind="png", scale=scale, border=2)
+    return buffer.getvalue()
+
+
 def carregar_config_juris() -> ConfigJurisApresentacao:
     if not JURIS_APRESENTACAO_PATH.exists():
         return ConfigJurisApresentacao()
