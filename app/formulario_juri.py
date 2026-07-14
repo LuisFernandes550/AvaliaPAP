@@ -13,6 +13,47 @@ from app.apresentacoes import (
 )
 
 
+def _estilos_letra_maior() -> None:
+    """Aumenta o tamanho da letra do formulário, sobretudo em tablets."""
+    st.markdown(
+        """
+        <style>
+        section.main h3 { font-size: 1.9rem !important; }
+        section.main .stCaption, section.main [data-testid="stCaptionContainer"] p {
+            font-size: 1.1rem !important;
+        }
+        div[data-testid="stForm"] label p { font-size: 1.25rem !important; }
+        div[data-testid="stForm"] input { font-size: 1.2rem !important; }
+        div[data-testid="stForm"] [data-baseweb="select"] div { font-size: 1.2rem !important; }
+        div[data-testid="stForm"] .stSlider label p { font-size: 1.3rem !important; }
+        div[data-testid="stForm"] [data-testid="stSliderThumbValue"] {
+            font-size: 1.25rem !important;
+        }
+        div[data-testid="stForm"] button p { font-size: 1.3rem !important; }
+        @media (max-width: 1200px) {
+            section.main h3 { font-size: 2.2rem !important; }
+            div[data-testid="stForm"] label p { font-size: 1.5rem !important; }
+            div[data-testid="stForm"] input { font-size: 1.45rem !important; }
+            div[data-testid="stForm"] [data-baseweb="select"] div {
+                font-size: 1.45rem !important;
+            }
+            div[data-testid="stForm"] .stSlider label p { font-size: 1.6rem !important; }
+            div[data-testid="stForm"] [data-testid="stSliderThumbValue"],
+            div[data-testid="stForm"] [data-testid="stTickBarMin"],
+            div[data-testid="stForm"] [data-testid="stTickBarMax"] {
+                font-size: 1.45rem !important;
+            }
+            div[data-testid="stForm"] button p { font-size: 1.55rem !important; }
+            div[data-testid="stForm"] button {
+                min-height: 3.4rem !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _impedir_teclado_nas_caixas() -> None:
     """Marca os campos das caixas de seleção como não editáveis.
 
@@ -61,6 +102,8 @@ def _escolher_da_lista(
 def renderizar_formulario_juri(storage) -> None:
     config = carregar_config_juris()
     alunos = storage.listar_alunos()
+
+    _estilos_letra_maior()
 
     st.markdown(
         f"### Avaliação da Defesa da PAP — Ano letivo {config.ano_letivo}"
