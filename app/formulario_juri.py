@@ -11,56 +11,181 @@ from app.apresentacoes import (
     carregar_config_juris,
 )
 
+_AJUDA_CRITERIOS: dict[str, str] = {
+    "expressao_oral": "Clareza na fala, fluência, contacto visual e uso adequado da voz e do corpo.",
+    "capacidade_sintese": "Organização das ideias, foco nos pontos essenciais e respeito pelo tempo.",
+    "recursos_apresentacao": "Qualidade dos slides, demonstrações, materiais de apoio e estratégias usadas.",
+    "argumentacao_defesa": "Capacidade de responder às questões e defender as opções do projecto.",
+}
+
+
+def _notas_existentes(
+    storage,
+    ano_letivo: str,
+    aluno_id: int,
+    juri_nome: str,
+) -> dict[str, int]:
+    return {
+        a.criterio: a.nota
+        for a in storage.listar_avaliacoes_juri(ano_letivo)
+        if a.aluno_id == aluno_id and a.juri_nome == juri_nome
+    }
+
+
+def _estilos_formulario_juri() -> None:
+    st.markdown(
+        """
+        <style>
+        .pap-juri-form-wrap {
+            max-width: 480px;
+            margin: 0 auto;
+        }
+        .pap-juri-form-wrap h3 {
+            font-size: 1.15rem;
+            margin-top: 1.25rem;
+            margin-bottom: 0.35rem;
+            color: #1e3a5f;
+        }
+        .pap-juri-criterio-num {
+            display: inline-block;
+            background: #1e3a5f;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+            width: 1.4rem;
+            height: 1.4rem;
+            line-height: 1.4rem;
+            text-align: center;
+            border-radius: 50%;
+            margin-right: 0.4rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 def renderizar_formulario_juri(storage) -> None:
     config = carregar_config_juris()
     alunos = storage.listar_alunos()
 
-    st.markdown(
-        f"### Avaliação da Defesa da PAP — Ano letivo {config.ano_letivo}"
-    )
-    st.caption(
-        "Atribua uma nota de **0 a 20** a cada parâmetro da secção "
-        "**C – Apresentação e Defesa do Projeto**."
-    )
+    _estilos_formulario_juri()
 
-    if not alunos:
-        st.warning(
-            "Ainda não há alunos importados na plataforma. "
-            "Peça ao administrador para importar os relatórios."
-        )
-        return
+    _, col_centro, _ = st.columns([1, 1.35, 1])
 
-    if st.session_state.pop("_juri_form_ok", False):
-        st.success("Avaliação registada com sucesso. Pode submeter outra avaliação.")
+    with col_centro:
+        st.markdown('<div class="pap-juri-form-wrap">', unsafe_allow_html=True)
 
-    with st.form("form_juri_apresentacao", clear_on_submit=False):
-        email = st.text_input("Email", placeholder="seu.email@escola.pt")
-        juri = st.selectbox("Nome do Júri *", config.juris)
-        opcoes_alunos = {a.nome: a.id for a in alunos}
-        nome_aluno = st.selectbox("Nome do Aluno *", list(opcoes_alunos.keys()))
-        st.divider()
-        notas: dict[str, int] = {}
-        for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
-            notas[chave] = st.number_input(
-                f"{rotulo} *",
-                min_value=NOTA_MINIMA_FORM,
-                max_value=NOTA_MAXIMA_FORM,
-                value=NOTA_MINIMA_FORM,
-                step=1,
+        st.markdown(f"### Avaliação da Defesa da PAP")
+        st.caption(f"Ano letivo **{config.ano_letivo}** — secção **C – Apresentação e Defesa**")
+
+        if not alunos:
+            st.warning(
+                "Ainda não há alunos importados na plataforma. "
+                "Peça ao administrador para importar os relatórios."
             )
+            return
+
+        resultado = st.session_state.pop("_juri_form_ok", None)
+        if resultado:
+            st.success("Avaliação registada com sucesso.")
+            with st.container(border=True):
+                st.markdown(f"**Júri:** {resultado['juri']}")
+                st.markdown(f"**Aluno:** {resultado['aluno']}")
+                for rotulo, nota in resultado["notas"].items():
+                    st.markdown(f"- {rotulo}: **{nota}** val.")
+                media_txt = f"{resultado['media']:.1f}".replace(".", ",")
+                st.markdown(f"**Média desta avaliação:** {media_txt} val.")
+            st.info("Pode avaliar outro aluno abaixo.")
+
+        st.markdown("#### 1. Identificação")
+        email = st.text_input(
+            "Email (opcional)",
+            placeholder="seu.email@escola.pt",
+            help="Para contacto, se necessário.",
+        )
+        juri = st.selectbox("Nome do júri *", config.juris)
+        opcoes_alunos = {a.nome: a.id for a in alunos}
+        nome_aluno = st.selectbox("Aluno a avaliar *", list(opcoes_alunos.keys()))
+        aluno_id = opcoes_alunos[nome_aluno]
+
+        existentes = _notas_existentes(storage, config.ano_letivo, aluno_id, juri)
+        if existentes:
+            rotulos = dict(CRITERIOS_FORM_APRESENTACAO)
+            linhas = [
+                f"- {rotulos.get(chave, chave)}: **{nota}** val."
+                for chave, nota in existentes.items()
+            ]
+            st.warning(
+                f"**{juri}** já avaliou **{nome_aluno}**. "
+                "As notas abaixo substituem a avaliação anterior."
+            )
+            st.markdown("\n".join(linhas))
+
+        st.markdown("#### 2. Notas por parâmetro")
+        st.caption("Escala de **0 a 20** — arraste o cursor ou clique na barra.")
+
+        notas: dict[str, int] = {}
+        for num, (chave, rotulo) in enumerate(CRITERIOS_FORM_APRESENTACAO, start=1):
+            valor_inicial = existentes.get(chave, NOTA_MINIMA_FORM)
+            with st.container(border=True):
+                st.markdown(
+                    f'<span class="pap-juri-criterio-num">{num}</span>'
+                    f"**{rotulo}**",
+                    unsafe_allow_html=True,
+                )
+                if chave in _AJUDA_CRITERIOS:
+                    st.caption(_AJUDA_CRITERIOS[chave])
+                notas[chave] = st.slider(
+                    "Nota",
+                    min_value=NOTA_MINIMA_FORM,
+                    max_value=NOTA_MAXIMA_FORM,
+                    value=int(valor_inicial),
+                    step=1,
+                    key=f"juri_nota_{chave}_{aluno_id}",
+                    label_visibility="collapsed",
+                )
+                st.markdown(f"Nota seleccionada: **{notas[chave]}** / {NOTA_MAXIMA_FORM}")
+
+        valores = list(notas.values())
+        media = sum(valores) / len(valores) if valores else 0.0
+        media_txt = f"{media:.1f}".replace(".", ",")
+
+        st.markdown("#### 3. Confirmar e enviar")
+        with st.container(border=True):
+            st.markdown(f"**Júri:** {juri}")
+            st.markdown(f"**Aluno:** {nome_aluno}")
+            cols = st.columns(4)
+            for col, (chave, rotulo) in zip(cols, CRITERIOS_FORM_APRESENTACAO):
+                abrev = rotulo.split()[0][:12]
+                col.metric(abrev, f"{notas[chave]} val.")
+            st.markdown(f"**Média:** {media_txt} val.")
+
         col_env, col_lim = st.columns(2)
-        enviar = col_env.form_submit_button("Enviar", type="primary", use_container_width=True)
-        limpar = col_lim.form_submit_button("Limpar formulário", use_container_width=True)
+        enviar = col_env.button(
+            "Registar avaliação",
+            type="primary",
+            use_container_width=True,
+        )
+        limpar = col_lim.button("Repor notas", use_container_width=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if limpar:
+        for chave, _ in CRITERIOS_FORM_APRESENTACAO:
+            st.session_state.pop(f"juri_nota_{chave}_{aluno_id}", None)
         st.rerun()
 
     if enviar:
         if not juri.strip():
             st.error("Seleccione o nome do júri.")
             return
-        aluno_id = opcoes_alunos[nome_aluno]
+        if all(n == NOTA_MINIMA_FORM for n in notas.values()):
+            st.error(
+                "Todas as notas estão a **0**. Confirme que pretende mesmo "
+                "registar zeros ou ajuste as notas antes de enviar."
+            )
+            return
         for chave, nota in notas.items():
             storage.guardar_avaliacao_juri(
                 aluno_id,
@@ -70,5 +195,10 @@ def renderizar_formulario_juri(storage) -> None:
                 config.ano_letivo,
                 email_juri=email.strip(),
             )
-        st.session_state["_juri_form_ok"] = True
+        st.session_state["_juri_form_ok"] = {
+            "juri": juri,
+            "aluno": nome_aluno,
+            "notas": {rotulo: notas[chave] for chave, rotulo in CRITERIOS_FORM_APRESENTACAO},
+            "media": media,
+        }
         st.rerun()
