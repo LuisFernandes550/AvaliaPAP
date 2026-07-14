@@ -24,7 +24,7 @@ def _selectbox_lista(
         kwargs["index"] = None
         kwargs["placeholder"] = placeholder
     try:
-        return st.selectbox(label, opcoes, filter_mode="none", **kwargs)
+        return st.selectbox(label, opcoes, filter_mode=None, **kwargs)
     except TypeError:
         kwargs.pop("accept_new_options", None)
         return st.selectbox(label, opcoes, **kwargs)
