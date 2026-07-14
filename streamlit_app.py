@@ -4,6 +4,7 @@ import html
 import io
 import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -148,6 +149,145 @@ storage = PapStorage()
 auth_storage = AuthStorage()
 
 _AUTH_QUERY_PARAM = "pap_auth"
+_AUTH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60
+_AUTH_JS_SECURE = " Secure;" if EM_STREAMLIT_CLOUD else ""
+
+
+def _normalizar_token(token: str | None) -> str | None:
+    if not token:
+        return None
+    limpo = str(token).strip().strip('"').strip("'")
+    return limpo or None
+
+
+def _auth_js_helpers() -> str:
+    return f"""
+function papWin() {{
+    try {{
+        return (window.parent && window.parent !== window) ? window.parent : window;
+    }} catch (e) {{
+        return window;
+    }}
+}}
+function papGetCookie(name) {{
+    try {{
+        var m = papWin().document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+        return m ? decodeURIComponent(m[2]) : '';
+    }} catch (e) {{ return ''; }}
+}}
+function papGetToken() {{
+    var w = papWin();
+    var t = '';
+    try {{
+        t = w.localStorage.getItem('pap_auth')
+            || w.sessionStorage.getItem('pap_auth')
+            || papGetCookie('pap_auth');
+    }} catch (e) {{}}
+    if (!t) {{
+        try {{
+            t = localStorage.getItem('pap_auth')
+                || sessionStorage.getItem('pap_auth')
+                || papGetCookie('pap_auth');
+        }} catch (e) {{}}
+    }}
+    return t || '';
+}}
+function papSetToken(t) {{
+    var w = papWin();
+    try {{
+        w.localStorage.setItem('pap_auth', t);
+        w.sessionStorage.setItem('pap_auth', t);
+    }} catch (e) {{}}
+    try {{
+        w.document.cookie = 'pap_auth=' + encodeURIComponent(t)
+            + '; path=/; max-age={_AUTH_COOKIE_MAX_AGE}; SameSite=Lax;{_AUTH_JS_SECURE}';
+    }} catch (e) {{}}
+    try {{
+        localStorage.removeItem('pap_auth');
+        sessionStorage.removeItem('pap_auth');
+    }} catch (e) {{}}
+}}
+function papClearToken() {{
+    var w = papWin();
+    try {{
+        w.localStorage.removeItem('pap_auth');
+        w.sessionStorage.removeItem('pap_auth');
+        w.document.cookie = 'pap_auth=; path=/; Max-Age=0; SameSite=Lax';
+    }} catch (e) {{}}
+    try {{
+        localStorage.removeItem('pap_auth');
+        sessionStorage.removeItem('pap_auth');
+    }} catch (e) {{}}
+}}
+function papLimparUrlAuth() {{
+    try {{
+        var w = papWin();
+        var u = new URL(w.location.href);
+        if (!u.searchParams.has('{_AUTH_QUERY_PARAM}')) return;
+        u.searchParams.delete('{_AUTH_QUERY_PARAM}');
+        w.history.replaceState({{}}, '', u.toString());
+    }} catch (e) {{}}
+}}
+"""
+
+
+def _token_do_browser() -> str | None:
+    """Lê o token de sessão do cookie HTTP enviado no pedido inicial (F5)."""
+    try:
+        return _normalizar_token(st.context.cookies.get("pap_auth"))
+    except Exception:
+        return None
+
+
+def _sincronizar_token_browser(token: str) -> None:
+    tok = json.dumps(token)
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            {_auth_js_helpers()}
+            papSetToken({tok});
+            papLimparUrlAuth();
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _limpar_token_browser() -> None:
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            {_auth_js_helpers()}
+            papClearToken();
+            papLimparUrlAuth();
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _inject_auth_redirect_browser() -> None:
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            {_auth_js_helpers()}
+            var t = papGetToken();
+            if (!t) return;
+            var w = papWin();
+            var u = new URL(w.location.href);
+            if (u.searchParams.get('{_AUTH_QUERY_PARAM}') === t) return;
+            u.searchParams.set('{_AUTH_QUERY_PARAM}', t);
+            w.location.replace(u.toString());
+        }})();
+        </script>
+        """,
+        height=0,
+    )
 
 _SUBTITULOS_PAGINA = {
     "Resumo": "Resumo da turma",
@@ -201,89 +341,19 @@ def _terminar_sessao_auth() -> None:
         del st.query_params[_AUTH_QUERY_PARAM]
 
 
-def _token_do_browser() -> str | None:
-    """Lê o token de sessão do cookie HTTP (funciona após F5 na cloud)."""
-    try:
-        token = st.context.cookies.get("pap_auth")
-        if token and str(token).strip():
-            return str(token).strip()
-    except Exception:
-        pass
-    return None
-
-
-def _sincronizar_token_browser(token: str) -> None:
-    tok = json.dumps(token)
-    max_age = 30 * 24 * 60 * 60
-    secure = " Secure;" if EM_STREAMLIT_CLOUD else ""
-    components.html(
-        f"""
-        <script>
-        (function() {{
-            var t = {tok};
-            localStorage.setItem('pap_auth', t);
-            sessionStorage.setItem('pap_auth', t);
-            document.cookie = 'pap_auth=' + encodeURIComponent(t)
-                + '; path=/; max-age={max_age}; SameSite=Lax;{secure}';
-        }})();
-        </script>
-        """,
-        height=0,
-    )
-
-
-def _limpar_token_browser() -> None:
-    components.html(
-        """
-        <script>
-        localStorage.removeItem('pap_auth');
-        sessionStorage.removeItem('pap_auth');
-        document.cookie = 'pap_auth=; path=/; Max-Age=0; SameSite=Lax';
-        </script>
-        """,
-        height=0,
-    )
-
-
-def _inject_auth_redirect_browser() -> None:
-    components.html(
-        f"""
-        <script>
-        (function() {{
-            function gc(n) {{
-                var m = document.cookie.match(new RegExp('(^| )' + n + '=([^;]+)'));
-                return m ? decodeURIComponent(m[2]) : '';
-            }}
-            var t = localStorage.getItem('pap_auth')
-                || sessionStorage.getItem('pap_auth')
-                || gc('pap_auth') || '';
-            if (!t) return;
-            var u = new URL(window.parent.location.href);
-            if (u.searchParams.get('{_AUTH_QUERY_PARAM}') === t) return;
-            u.searchParams.set('{_AUTH_QUERY_PARAM}', t);
-            window.parent.location.replace(u.toString());
-        }})();
-        </script>
-        """,
-        height=0,
-    )
-
-
 def _tentar_restaurar_sessao_auth() -> None:
     if _sessao_auth():
         return
-    token = (
+    token = _normalizar_token(
         st.session_state.get("auth_token")
         or st.query_params.get(_AUTH_QUERY_PARAM)
         or _token_do_browser()
     )
     if token:
-        user = auth_storage.utilizador_por_token_sessao(str(token))
+        user = auth_storage.utilizador_por_token_sessao(token)
         if user:
-            _iniciar_sessao_auth(user, str(token))
-            _sincronizar_token_browser(str(token))
-            if _AUTH_QUERY_PARAM in st.query_params:
-                del st.query_params[_AUTH_QUERY_PARAM]
+            _iniciar_sessao_auth(user, token)
+            _sincronizar_token_browser(token)
             return
         st.session_state.pop("auth_token", None)
         if _AUTH_QUERY_PARAM in st.query_params:
@@ -311,6 +381,7 @@ def _pagina_login() -> None:
                     token = auth_storage.criar_sessao(user.id)
                     _iniciar_sessao_auth(user, token)
                     _sincronizar_token_browser(token)
+                    time.sleep(0.4)
                     st.rerun()
                 else:
                     st.error("Utilizador ou palavra-passe inválidos.")
@@ -2467,6 +2538,8 @@ _tentar_restaurar_sessao_auth()
 
 sessao = _sessao_auth()
 if not sessao:
+    if not st.query_params.get(_AUTH_QUERY_PARAM):
+        st.caption("A restaurar sessão…")
     _pagina_login()
     st.stop()
 
