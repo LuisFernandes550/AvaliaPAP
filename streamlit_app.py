@@ -33,7 +33,7 @@ from app.app_settings import (
     guardar_configuracao_app,
     titulo_app,
 )
-from app.auth import AuthStorage, Utilizador
+from app.formulario_juri import renderizar_formulario_juri
 from app.backup import descricao_armazenamento, exportar_backup, importar_backup
 from app.config import ACTA_PATH, EM_STREAMLIT_CLOUD, NOTA_MAXIMA, RELATORIOS_DIR
 from app.models import (
@@ -1075,6 +1075,19 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                 use_container_width=True,
                 hide_index=True,
             )
+            if st.button(
+                "Limpar notas deste aluno",
+                key=f"limpar_juri_{aluno.id}",
+                type="secondary",
+            ):
+                storage.apagar_avaliacoes_juri(config.ano_letivo, aluno_id=aluno.id)
+                storage.apagar_avaliacoes_criterios(
+                    [aluno.id],
+                    CRITERIOS_POR_SECAO[SecaoAvaliacao.APRESENTACAO],
+                )
+                st.session_state.pop("_acta_bytes", None)
+                st.success(f"Notas de apresentação de {aluno.nome} removidas.")
+                st.rerun()
 
 
 def _pagina_config_juris(sessao: dict) -> None:
@@ -2324,6 +2337,14 @@ def _pagina_resumo(alunos: list[AlunoRelatorio]) -> None:
 
 
 _inicializar_instrucoes()
+
+if st.query_params.get("formulario") == "juri":
+    st.markdown(
+        f'<div class="pap-page-header"><h1>{html.escape(titulo_app())}</h1></div>',
+        unsafe_allow_html=True,
+    )
+    renderizar_formulario_juri(storage)
+    st.stop()
 
 _tentar_restaurar_sessao_auth()
 

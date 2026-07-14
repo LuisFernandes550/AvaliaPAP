@@ -10,14 +10,12 @@ from app.apresentacoes import (
     NOTA_MINIMA_FORM,
     carregar_config_juris,
 )
-from app.app_settings import titulo_app
 
 
 def renderizar_formulario_juri(storage) -> None:
     config = carregar_config_juris()
     alunos = storage.listar_alunos()
 
-    st.markdown(f"## {titulo_app()}")
     st.markdown(
         f"### Avaliação da Defesa da PAP — Ano letivo {config.ano_letivo}"
     )

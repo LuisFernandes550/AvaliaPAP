@@ -53,7 +53,7 @@ class AvaliacaoJuri:
 
 
 def url_formulario_juri() -> str:
-    """URL directa do formulário (página multipage, sem query params estranhos)."""
+    """URL pública do formulário (query param — funciona sem login)."""
     base = _ler_config("APP_URL")
     if not base:
         base = (
@@ -61,7 +61,7 @@ def url_formulario_juri() -> str:
             if EM_STREAMLIT_CLOUD
             else "http://localhost:8501"
         )
-    return f"{base.rstrip('/')}/Formulario_Juri"
+    return f"{base.rstrip('/')}/?formulario=juri"
 
 
 def carregar_config_juris() -> ConfigJurisApresentacao:
