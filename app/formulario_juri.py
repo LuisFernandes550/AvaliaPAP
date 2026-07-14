@@ -10,7 +10,34 @@ from app.apresentacoes import (
     NOTA_MAXIMA_FORM,
     NOTA_MINIMA_FORM,
     carregar_config_juris,
+    verificar_senha_formulario,
 )
+
+_SESSAO_ACESSO_OK = "_juri_acesso_ok"
+
+
+def _portao_palavra_passe(config) -> bool:
+    """Pede a palavra-passe de acesso. Devolve True se o acesso está autorizado."""
+    if not config.protegido:
+        return True
+    if st.session_state.get(_SESSAO_ACESSO_OK):
+        return True
+
+    _estilos_letra_maior()
+    st.markdown("### Avaliação da Defesa da PAP")
+    st.caption("Acesso restrito — introduza a palavra-passe fornecida pela escola.")
+
+    with st.form("form_juri_acesso", clear_on_submit=False):
+        senha = st.text_input("Palavra-passe", type="password")
+        entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+
+    if entrar:
+        if verificar_senha_formulario(config, senha):
+            st.session_state[_SESSAO_ACESSO_OK] = True
+            st.rerun()
+        else:
+            st.error("Palavra-passe incorrecta.")
+    return False
 
 
 def _estilos_letra_maior() -> None:
@@ -107,6 +134,10 @@ def _escolher_da_lista(
 
 def renderizar_formulario_juri(storage) -> None:
     config = carregar_config_juris()
+
+    if not _portao_palavra_passe(config):
+        return
+
     alunos = storage.listar_alunos()
 
     _estilos_letra_maior()

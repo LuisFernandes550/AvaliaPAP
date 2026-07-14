@@ -26,6 +26,7 @@ from app.apresentacoes import (
     calcular_medias_criterio,
     carregar_config_juris,
     guardar_config_juris,
+    hash_senha_formulario,
     qrcode_formulario_juri_png,
     sincronizar_medias_para_acta,
     url_formulario_juri,
@@ -1301,14 +1302,41 @@ def _pagina_config_juris(sessao: dict) -> None:
         nomes_juris.append(
             st.text_input(f"Júri {i + 1}", default, key=f"cfg_juri_{i}")
         )
+
+    st.divider()
+    estado = (
+        "protegido por palavra-passe" if config.protegido else "público (sem palavra-passe)"
+    )
+    st.markdown(f"**Acesso ao formulário:** {estado}.")
+    nova_senha = st.text_input(
+        "Palavra-passe do formulário",
+        type="password",
+        key="cfg_juri_senha",
+        help="Deixe vazio para manter a palavra-passe atual.",
+        placeholder="•••••• (vazio = manter)",
+    )
+    remover_senha = st.checkbox(
+        "Remover palavra-passe (formulário fica público)",
+        key="cfg_juri_remover_senha",
+        disabled=not config.protegido,
+    )
+
     if st.button("Guardar júris", type="primary", key="guardar_juris"):
+        if remover_senha:
+            senha_hash = ""
+        elif nova_senha.strip():
+            senha_hash = hash_senha_formulario(nova_senha.strip())
+        else:
+            senha_hash = config.senha_hash
         guardar_config_juris(
             ConfigJurisApresentacao(
                 ano_letivo=ano.strip() or ANO_LETIVO_APRESENTACAO,
                 juris=[n.strip() or f"Júri {i + 1}" for i, n in enumerate(nomes_juris)],
+                senha_hash=senha_hash,
             )
         )
         st.success("Configuração dos júris guardada.")
+        st.rerun()
     url_form = url_formulario_juri()
     st.markdown(f"**Link do formulário** (ano letivo {config.ano_letivo}):")
     st.code(url_form, language=None)

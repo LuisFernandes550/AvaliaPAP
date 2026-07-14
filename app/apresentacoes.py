@@ -36,6 +36,11 @@ class ConfigJurisApresentacao:
     juris: list[str] = field(
         default_factory=lambda: [f"Júri {i}" for i in range(1, NUM_JURIS + 1)]
     )
+    senha_hash: str = ""
+
+    @property
+    def protegido(self) -> bool:
+        return bool(self.senha_hash)
 
 
 @dataclass
@@ -92,6 +97,7 @@ def carregar_config_juris() -> ConfigJurisApresentacao:
         ano_letivo=str(dados.get("ano_letivo", ANO_LETIVO_APRESENTACAO)).strip()
         or ANO_LETIVO_APRESENTACAO,
         juris=juris[:NUM_JURIS],
+        senha_hash=str(dados.get("senha_hash", "")).strip(),
     )
 
 
@@ -99,12 +105,35 @@ def guardar_config_juris(config: ConfigJurisApresentacao) -> None:
     JURIS_APRESENTACAO_PATH.parent.mkdir(parents=True, exist_ok=True)
     JURIS_APRESENTACAO_PATH.write_text(
         json.dumps(
-            {"ano_letivo": config.ano_letivo, "juris": config.juris[:NUM_JURIS]},
+            {
+                "ano_letivo": config.ano_letivo,
+                "juris": config.juris[:NUM_JURIS],
+                "senha_hash": config.senha_hash,
+            },
             ensure_ascii=False,
             indent=2,
         ),
         encoding="utf-8",
     )
+
+
+def hash_senha_formulario(senha: str) -> str:
+    """Devolve o hash bcrypt de uma palavra-passe (para guardar na config)."""
+    import bcrypt
+
+    return bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verificar_senha_formulario(config: ConfigJurisApresentacao, senha: str) -> bool:
+    """Confirma se a palavra-passe corresponde ao hash guardado."""
+    if not config.senha_hash:
+        return True
+    try:
+        import bcrypt
+
+        return bcrypt.checkpw(senha.encode("utf-8"), config.senha_hash.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def label_criterio_form(chave: str) -> str:
