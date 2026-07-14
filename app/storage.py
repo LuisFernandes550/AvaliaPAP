@@ -331,6 +331,22 @@ class PapStorage:
             for row in rows
         ]
 
+    def obter_notas_juri_aluno(
+        self,
+        aluno_id: int,
+        juri_nome: str,
+        ano_letivo: str,
+    ) -> dict[str, int]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT criterio, nota FROM avaliacoes_juri
+                WHERE aluno_id = ? AND juri_nome = ? AND ano_letivo = ?
+                """,
+                (aluno_id, juri_nome.strip(), ano_letivo),
+            ).fetchall()
+        return {row["criterio"]: int(row["nota"]) for row in rows}
+
     def apagar_avaliacoes_juri(
         self,
         ano_letivo: str,

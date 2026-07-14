@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from app.apresentacoes import (
@@ -11,6 +13,8 @@ from app.apresentacoes import (
     carregar_config_juris,
 )
 
+_CHAVES_CRITERIOS = [chave for chave, _ in CRITERIOS_FORM_APRESENTACAO]
+
 _AJUDA_CRITERIOS: dict[str, str] = {
     "expressao_oral": "Clareza na fala, fluência, contacto visual e uso adequado da voz e do corpo.",
     "capacidade_sintese": "Organização das ideias, foco nos pontos essenciais e respeito pelo tempo.",
@@ -19,17 +23,24 @@ _AJUDA_CRITERIOS: dict[str, str] = {
 }
 
 
-def _notas_existentes(
+def _juri_slug(nome: str) -> str:
+    return re.sub(r"\W+", "_", nome.strip().lower())[:48]
+
+
+def _avaliacao_previa(
     storage,
     ano_letivo: str,
     aluno_id: int,
     juri_nome: str,
-) -> dict[str, int]:
-    return {
-        a.criterio: a.nota
-        for a in storage.listar_avaliacoes_juri(ano_letivo)
-        if a.aluno_id == aluno_id and a.juri_nome == juri_nome
-    }
+) -> dict[str, int] | None:
+    """Só considera avaliação anterior se os 4 critérios existirem e não forem todos 0."""
+    bruto = storage.obter_notas_juri_aluno(aluno_id, juri_nome, ano_letivo)
+    notas = {chave: bruto[chave] for chave in _CHAVES_CRITERIOS if chave in bruto}
+    if len(notas) != len(_CHAVES_CRITERIOS):
+        return None
+    if all(n == NOTA_MINIMA_FORM for n in notas.values()):
+        return None
+    return notas
 
 
 def _estilos_formulario_juri() -> None:
@@ -76,7 +87,7 @@ def renderizar_formulario_juri(storage) -> None:
     with col_centro:
         st.markdown('<div class="pap-juri-form-wrap">', unsafe_allow_html=True)
 
-        st.markdown(f"### Avaliação da Defesa da PAP")
+        st.markdown("### Avaliação da Defesa da PAP")
         st.caption(f"Ano letivo **{config.ano_letivo}** — secção **C – Apresentação e Defesa**")
 
         if not alunos:
@@ -103,13 +114,14 @@ def renderizar_formulario_juri(storage) -> None:
         opcoes_alunos = {a.nome: a.id for a in alunos}
         nome_aluno = st.selectbox("Aluno a avaliar *", list(opcoes_alunos.keys()))
         aluno_id = opcoes_alunos[nome_aluno]
+        juri_id = _juri_slug(juri)
 
-        existentes = _notas_existentes(storage, config.ano_letivo, aluno_id, juri)
-        if existentes:
+        previa = _avaliacao_previa(storage, config.ano_letivo, aluno_id, juri)
+        if previa:
             rotulos = dict(CRITERIOS_FORM_APRESENTACAO)
             linhas = [
-                f"- {rotulos.get(chave, chave)}: **{nota}** val."
-                for chave, nota in existentes.items()
+                f"- {rotulos[chave]}: **{nota}** val."
+                for chave, nota in previa.items()
             ]
             st.warning(
                 f"**{juri}** já avaliou **{nome_aluno}**. "
@@ -122,7 +134,7 @@ def renderizar_formulario_juri(storage) -> None:
 
         notas: dict[str, int] = {}
         for num, (chave, rotulo) in enumerate(CRITERIOS_FORM_APRESENTACAO, start=1):
-            valor_inicial = existentes.get(chave, NOTA_MINIMA_FORM)
+            valor_inicial = previa.get(chave, NOTA_MINIMA_FORM) if previa else NOTA_MINIMA_FORM
             with st.container(border=True):
                 st.markdown(
                     f'<span class="pap-juri-criterio-num">{num}</span>'
@@ -137,7 +149,7 @@ def renderizar_formulario_juri(storage) -> None:
                     max_value=NOTA_MAXIMA_FORM,
                     value=int(valor_inicial),
                     step=1,
-                    key=f"juri_nota_{chave}_{aluno_id}",
+                    key=f"juri_nota_{chave}_{aluno_id}_{juri_id}",
                     label_visibility="collapsed",
                 )
                 st.markdown(f"Nota seleccionada: **{notas[chave]}** / {NOTA_MAXIMA_FORM}")
@@ -154,7 +166,7 @@ def renderizar_formulario_juri(storage) -> None:
 
     if limpar:
         for chave, _ in CRITERIOS_FORM_APRESENTACAO:
-            st.session_state.pop(f"juri_nota_{chave}_{aluno_id}", None)
+            st.session_state.pop(f"juri_nota_{chave}_{aluno_id}_{juri_id}", None)
         st.rerun()
 
     if enviar:
