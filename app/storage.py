@@ -263,6 +263,22 @@ class PapStorage:
             )
             return cursor.rowcount
 
+    def remover_avaliacao_juri(
+        self,
+        aluno_id: int,
+        juri_nome: str,
+        criterio: str,
+        ano_letivo: str,
+    ) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                DELETE FROM avaliacoes_juri
+                WHERE aluno_id = ? AND juri_nome = ? AND criterio = ? AND ano_letivo = ?
+                """,
+                (aluno_id, juri_nome.strip(), criterio, ano_letivo),
+            )
+
     def guardar_avaliacao_juri(
         self,
         aluno_id: int,

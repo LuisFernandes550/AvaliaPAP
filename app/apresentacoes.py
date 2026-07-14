@@ -27,6 +27,7 @@ CRITERIOS_FORM_APRESENTACAO: list[tuple[str, str]] = [
 ]
 
 _LABELS_FORM = dict(CRITERIOS_FORM_APRESENTACAO)
+ROTULO_PARA_CHAVE = {rotulo: chave for chave, rotulo in CRITERIOS_FORM_APRESENTACAO}
 
 
 @dataclass

@@ -16,7 +16,10 @@ from app.ai_evaluator import avaliar_relatorio, ia_disponivel, resumir_capitulos
 from app.apresentacoes import (
     ANO_LETIVO_APRESENTACAO,
     CRITERIOS_FORM_APRESENTACAO,
+    NOTA_MAXIMA_FORM,
+    NOTA_MINIMA_FORM,
     NUM_JURIS,
+    ROTULO_PARA_CHAVE,
     ConfigJurisApresentacao,
     calcular_medias_aluno,
     calcular_medias_criterio,
@@ -198,15 +201,30 @@ def _terminar_sessao_auth() -> None:
         del st.query_params[_AUTH_QUERY_PARAM]
 
 
+def _token_do_browser() -> str | None:
+    """Lê o token de sessão do cookie HTTP (funciona após F5 na cloud)."""
+    try:
+        token = st.context.cookies.get("pap_auth")
+        if token and str(token).strip():
+            return str(token).strip()
+    except Exception:
+        pass
+    return None
+
+
 def _sincronizar_token_browser(token: str) -> None:
     tok = json.dumps(token)
+    max_age = 30 * 24 * 60 * 60
+    secure = " Secure;" if EM_STREAMLIT_CLOUD else ""
     components.html(
         f"""
         <script>
         (function() {{
             var t = {tok};
+            localStorage.setItem('pap_auth', t);
             sessionStorage.setItem('pap_auth', t);
-            document.cookie = 'pap_auth=' + encodeURIComponent(t) + '; path=/; SameSite=Lax';
+            document.cookie = 'pap_auth=' + encodeURIComponent(t)
+                + '; path=/; max-age={max_age}; SameSite=Lax;{secure}';
         }})();
         </script>
         """,
@@ -218,6 +236,7 @@ def _limpar_token_browser() -> None:
     components.html(
         """
         <script>
+        localStorage.removeItem('pap_auth');
         sessionStorage.removeItem('pap_auth');
         document.cookie = 'pap_auth=; path=/; Max-Age=0; SameSite=Lax';
         </script>
@@ -235,7 +254,9 @@ def _inject_auth_redirect_browser() -> None:
                 var m = document.cookie.match(new RegExp('(^| )' + n + '=([^;]+)'));
                 return m ? decodeURIComponent(m[2]) : '';
             }}
-            var t = gc('pap_auth') || sessionStorage.getItem('pap_auth') || '';
+            var t = localStorage.getItem('pap_auth')
+                || sessionStorage.getItem('pap_auth')
+                || gc('pap_auth') || '';
             if (!t) return;
             var u = new URL(window.parent.location.href);
             if (u.searchParams.get('{_AUTH_QUERY_PARAM}') === t) return;
@@ -251,11 +272,16 @@ def _inject_auth_redirect_browser() -> None:
 def _tentar_restaurar_sessao_auth() -> None:
     if _sessao_auth():
         return
-    token = st.session_state.get("auth_token") or st.query_params.get(_AUTH_QUERY_PARAM)
+    token = (
+        st.session_state.get("auth_token")
+        or st.query_params.get(_AUTH_QUERY_PARAM)
+        or _token_do_browser()
+    )
     if token:
         user = auth_storage.utilizador_por_token_sessao(str(token))
         if user:
             _iniciar_sessao_auth(user, str(token))
+            _sincronizar_token_browser(str(token))
             if _AUTH_QUERY_PARAM in st.query_params:
                 del st.query_params[_AUTH_QUERY_PARAM]
             return
@@ -1003,7 +1029,7 @@ def _pagina_backup_dados(sessao: dict) -> None:
     st.divider()
 
 
-def _tabela_apresentacoes_aluno(
+def _tabela_apresentacoes_editavel(
     aluno: AlunoRelatorio,
     config: ConfigJurisApresentacao,
     avaliacoes_juri: list,
@@ -1011,7 +1037,6 @@ def _tabela_apresentacoes_aluno(
     linhas: list[dict] = []
     for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
         linha: dict = {"Parâmetro": rotulo}
-        notas_juri: list[int] = []
         for juri in config.juris:
             nota = next(
                 (
@@ -1023,27 +1048,88 @@ def _tabela_apresentacoes_aluno(
                 ),
                 None,
             )
-            linha[juri] = nota if nota is not None else "—"
-            if nota is not None:
-                notas_juri.append(nota)
+            linha[juri] = nota
         media = calcular_medias_criterio(avaliacoes_juri, aluno.id, chave)
-        linha["Média"] = f"{media:.1f}".replace(".", ",") if media is not None else "—"
+        linha["Média"] = round(media, 1) if media is not None else None
         linhas.append(linha)
     return pd.DataFrame(linhas)
+
+
+def _aplicar_edicao_juri_tabela(
+    aluno: AlunoRelatorio,
+    config: ConfigJurisApresentacao,
+    df: pd.DataFrame,
+    avaliacoes_juri: list,
+) -> int:
+    alterados = 0
+    for _, linha in df.iterrows():
+        rotulo = linha.get("Parâmetro", "")
+        chave = ROTULO_PARA_CHAVE.get(rotulo)
+        if not chave:
+            continue
+        for juri in config.juris:
+            novo = linha.get(juri)
+            if novo is None or (isinstance(novo, float) and pd.isna(novo)):
+                existia = any(
+                    a.aluno_id == aluno.id
+                    and a.juri_nome == juri
+                    and a.criterio == chave
+                    for a in avaliacoes_juri
+                )
+                if existia:
+                    storage.remover_avaliacao_juri(
+                        aluno.id, juri, chave, config.ano_letivo
+                    )
+                    alterados += 1
+                continue
+            try:
+                nota_nova = int(round(float(novo)))
+            except (TypeError, ValueError):
+                continue
+            if not NOTA_MINIMA_FORM <= nota_nova <= NOTA_MAXIMA_FORM:
+                continue
+            atual = next(
+                (
+                    a.nota
+                    for a in avaliacoes_juri
+                    if a.aluno_id == aluno.id
+                    and a.juri_nome == juri
+                    and a.criterio == chave
+                ),
+                None,
+            )
+            if atual == nota_nova:
+                continue
+            storage.guardar_avaliacao_juri(
+                aluno.id,
+                juri,
+                chave,
+                nota_nova,
+                config.ano_letivo,
+                email_juri="edição manual",
+            )
+            alterados += 1
+    return alterados
 
 
 def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
     config = carregar_config_juris()
     avaliacoes_juri = storage.listar_avaliacoes_juri(config.ano_letivo)
 
-    st.caption(f"Ano letivo **{config.ano_letivo}** — notas atribuídas por **{NUM_JURIS} júris**.")
+    st.caption(
+        f"Ano letivo **{config.ano_letivo}** — notas dos **{NUM_JURIS} júris** "
+        f"({len(avaliacoes_juri)} registo(s))."
+    )
 
-    col_link, col_sync = st.columns([3, 1])
+    col_link, col_ref, col_sync = st.columns([3, 1, 1])
     url_form = url_formulario_juri()
     with col_link:
-        st.markdown("**Formulário de avaliação (júris)** — partilhe este link:")
+        st.markdown("**Formulário dos júris** — partilhe este link:")
         st.code(url_form, language=None)
         st.link_button("Abrir formulário", url_form, use_container_width=False)
+    with col_ref:
+        if st.button("Atualizar", use_container_width=True, key="btn_atualizar_apresentacoes"):
+            st.rerun()
     with col_sync:
         if st.button("Sincronizar médias → Acta", type="primary", use_container_width=True):
             n, avisos = sincronizar_medias_para_acta(storage, config.ano_letivo)
@@ -1059,7 +1145,18 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
         return
 
     if not avaliacoes_juri:
-        st.info("Nenhuma avaliação registada. Envie o link do formulário aos júris.")
+        st.info("Nenhuma avaliação registada. Use o formulário ou edite manualmente abaixo.")
+
+    colunas_juri = {
+        j: st.column_config.NumberColumn(
+            j,
+            min_value=NOTA_MINIMA_FORM,
+            max_value=NOTA_MAXIMA_FORM,
+            step=1,
+            format="%d",
+        )
+        for j in config.juris
+    }
 
     for aluno in alunos:
         medias = calcular_medias_aluno(avaliacoes_juri, aluno.id)
@@ -1069,14 +1166,33 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
             vals = [v for v in medias.values() if v is not None]
             media_geral = sum(vals) / len(vals) if vals else None
             if media_geral is not None:
-                rotulo += f" — média form. {media_geral:.1f}".replace(".", ",")
+                rotulo += f" — média {media_geral:.1f}".replace(".", ",")
         with st.expander(rotulo, expanded=False):
-            st.dataframe(
-                _tabela_apresentacoes_aluno(aluno, config, avaliacoes_juri),
-                use_container_width=True,
+            df = _tabela_apresentacoes_editavel(aluno, config, avaliacoes_juri)
+            editado = st.data_editor(
+                df,
+                column_config={
+                    "Parâmetro": st.column_config.TextColumn(disabled=True),
+                    "Média": st.column_config.NumberColumn(
+                        "Média", disabled=True, format="%.1f"
+                    ),
+                    **colunas_juri,
+                },
                 hide_index=True,
+                use_container_width=True,
+                key=f"editor_juri_{aluno.id}",
             )
-            if st.button(
+            c1, c2 = st.columns(2)
+            if c1.button("Guardar alterações", key=f"save_juri_{aluno.id}", type="primary"):
+                n = _aplicar_edicao_juri_tabela(
+                    aluno, config, pd.DataFrame(editado), avaliacoes_juri
+                )
+                if n:
+                    st.success(f"{n} nota(s) actualizada(s).")
+                else:
+                    st.info("Sem alterações.")
+                st.rerun()
+            if c2.button(
                 "Limpar notas deste aluno",
                 key=f"limpar_juri_{aluno.id}",
                 type="secondary",
@@ -2353,6 +2469,9 @@ sessao = _sessao_auth()
 if not sessao:
     _pagina_login()
     st.stop()
+
+if token := st.session_state.get("auth_token"):
+    _sincronizar_token_browser(str(token))
 
 _renderizar_titulo_plataforma()
 
