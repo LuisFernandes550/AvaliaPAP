@@ -12,7 +12,19 @@ import streamlit as st
 import streamlit.components.v1 as components
 from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, JsCode
 
-from app.ai_evaluator import avaliar_relatorio, ia_disponivel, resumir_capitulos
+from app.apresentacoes import (
+    ANO_LETIVO_APRESENTACAO,
+    CRITERIOS_FORM_APRESENTACAO,
+    NOTA_MAXIMA_FORM,
+    NOTA_MINIMA_FORM,
+    NUM_JURIS,
+    ConfigJurisApresentacao,
+    calcular_medias_aluno,
+    calcular_medias_criterio,
+    carregar_config_juris,
+    guardar_config_juris,
+    sincronizar_medias_para_acta,
+)
 from app.acta_excel import sincronizar_acta
 from app.app_settings import (
     TITULO_PADRAO,
@@ -136,6 +148,7 @@ _AUTH_QUERY_PARAM = "pap_auth"
 _SUBTITULOS_PAGINA = {
     "Resumo": "Resumo da turma",
     "Relatórios": "Relatórios",
+    "Apresentações": "Apresentações — Defesa da PAP",
     "Definições": "Definições",
 }
 
@@ -989,6 +1002,173 @@ def _pagina_backup_dados(sessao: dict) -> None:
     st.divider()
 
 
+def _pagina_formulario_juri() -> None:
+    """Formulário público para cada membro do júri (sem login)."""
+    config = carregar_config_juris()
+    alunos = storage.listar_alunos()
+
+    st.markdown(
+        f"### Avaliação da Defesa da PAP TGPSI\n"
+        f"**Ano letivo {config.ano_letivo}**"
+    )
+    st.caption(
+        "Atribua uma nota de **0 a 20** a cada parâmetro. "
+        "As notas ficam visíveis no separador **Apresentações**."
+    )
+
+    if not alunos:
+        st.warning("Ainda não há alunos importados. Importe relatórios .docx na aplicação principal.")
+        return
+
+    if st.session_state.pop("_juri_form_ok", False):
+        st.success("Avaliação registada com sucesso. Pode submeter outra ou fechar esta página.")
+
+    with st.form("form_juri_apresentacao", clear_on_submit=False):
+        email = st.text_input("Email", placeholder="seu.email@escola.pt")
+        juri = st.selectbox("Nome do Júri *", config.juris)
+        opcoes_alunos = {a.nome: a.id for a in alunos}
+        nome_aluno = st.selectbox("Nome do Aluno *", list(opcoes_alunos.keys()))
+        st.markdown("---")
+        notas: dict[str, int] = {}
+        for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
+            notas[chave] = st.number_input(
+                f"{rotulo} *",
+                min_value=NOTA_MINIMA_FORM,
+                max_value=NOTA_MAXIMA_FORM,
+                value=NOTA_MINIMA_FORM,
+                step=1,
+            )
+        col_env, col_lim = st.columns(2)
+        enviar = col_env.form_submit_button("Enviar", type="primary", use_container_width=True)
+        limpar = col_lim.form_submit_button("Limpar formulário", use_container_width=True)
+
+    if limpar:
+        st.rerun()
+
+    if enviar:
+        if not juri.strip():
+            st.error("Seleccione o nome do júri.")
+            return
+        aluno_id = opcoes_alunos[nome_aluno]
+        for chave, nota in notas.items():
+            storage.guardar_avaliacao_juri(
+                aluno_id,
+                juri,
+                chave,
+                int(nota),
+                config.ano_letivo,
+                email_juri=email.strip(),
+            )
+        st.session_state["_juri_form_ok"] = True
+        st.rerun()
+
+
+def _tabela_apresentacoes_aluno(
+    aluno: AlunoRelatorio,
+    config: ConfigJurisApresentacao,
+    avaliacoes_juri: list,
+) -> pd.DataFrame:
+    linhas: list[dict] = []
+    for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
+        linha: dict = {"Parâmetro": rotulo}
+        notas_juri: list[int] = []
+        for juri in config.juris:
+            nota = next(
+                (
+                    a.nota
+                    for a in avaliacoes_juri
+                    if a.aluno_id == aluno.id
+                    and a.juri_nome == juri
+                    and a.criterio == chave
+                ),
+                None,
+            )
+            linha[juri] = nota if nota is not None else "—"
+            if nota is not None:
+                notas_juri.append(nota)
+        media = calcular_medias_criterio(avaliacoes_juri, aluno.id, chave)
+        linha["Média"] = f"{media:.1f}".replace(".", ",") if media is not None else "—"
+        linhas.append(linha)
+    return pd.DataFrame(linhas)
+
+
+def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
+    config = carregar_config_juris()
+    avaliacoes_juri = storage.listar_avaliacoes_juri(config.ano_letivo)
+
+    st.caption(f"Ano letivo **{config.ano_letivo}** — notas atribuídas por **{NUM_JURIS} júris**.")
+
+    col_link, col_sync = st.columns([3, 1])
+    with col_link:
+        st.markdown(
+            "**Formulário de avaliação (júris):** "
+            "[Abrir formulário](?formulario=juri) — partilhe este link com cada membro do júri."
+        )
+    with col_sync:
+        if st.button("Sincronizar médias → Acta", type="primary", use_container_width=True):
+            n, avisos = sincronizar_medias_para_acta(storage, config.ano_letivo)
+            if n:
+                st.session_state.pop("_acta_bytes", None)
+                st.success(f"{n} nota(s) actualizadas na grelha do Resumo / Acta.")
+            for aviso in avisos:
+                st.warning(aviso)
+            st.rerun()
+
+    if not alunos:
+        st.info("Importe alunos na barra lateral para ver as avaliações da defesa.")
+        return
+
+    if not avaliacoes_juri:
+        st.info("Nenhuma avaliação registada. Envie o link do formulário aos júris.")
+
+    for aluno in alunos:
+        medias = calcular_medias_aluno(avaliacoes_juri, aluno.id)
+        tem_notas = any(v is not None for v in medias.values())
+        rotulo = aluno.nome
+        if tem_notas:
+            vals = [v for v in medias.values() if v is not None]
+            media_geral = sum(vals) / len(vals) if vals else None
+            if media_geral is not None:
+                rotulo += f" — média form. {media_geral:.1f}".replace(".", ",")
+        with st.expander(rotulo, expanded=False):
+            st.dataframe(
+                _tabela_apresentacoes_aluno(aluno, config, avaliacoes_juri),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
+def _pagina_config_juris(sessao: dict) -> None:
+    if sessao["role"] != "admin":
+        return
+    st.header("Júris — Apresentações")
+    st.caption(
+        f"Configure os **{NUM_JURIS} membros do júri** e o ano letivo. "
+        "Os nomes aparecem no formulário de avaliação da defesa."
+    )
+    config = carregar_config_juris()
+    ano = st.text_input("Ano letivo", config.ano_letivo, key="cfg_ano_juri")
+    nomes_juris: list[str] = []
+    for i in range(NUM_JURIS):
+        default = config.juris[i] if i < len(config.juris) else f"Júri {i + 1}"
+        nomes_juris.append(
+            st.text_input(f"Júri {i + 1}", default, key=f"cfg_juri_{i}")
+        )
+    if st.button("Guardar júris", type="primary", key="guardar_juris"):
+        guardar_config_juris(
+            ConfigJurisApresentacao(
+                ano_letivo=ano.strip() or ANO_LETIVO_APRESENTACAO,
+                juris=[n.strip() or f"Júri {i + 1}" for i, n in enumerate(nomes_juris)],
+            )
+        )
+        st.success("Configuração dos júris guardada.")
+    st.markdown(
+        f"[Abrir formulário de avaliação](?formulario=juri) "
+        f"(ano letivo {config.ano_letivo})"
+    )
+    st.divider()
+
+
 def _pagina_configuracao() -> None:
     sessao = _sessao_auth()
     if sessao:
@@ -998,6 +1178,7 @@ def _pagina_configuracao() -> None:
 
     sessao = _sessao_auth()
     if sessao:
+        _pagina_config_juris(sessao)
         _pagina_backup_dados(sessao)
 
     st.header("Instruções de avaliação")
@@ -2205,6 +2386,11 @@ def _pagina_resumo(alunos: list[AlunoRelatorio]) -> None:
 
 _inicializar_instrucoes()
 
+if st.query_params.get("formulario") == "juri":
+    _renderizar_titulo_plataforma()
+    _pagina_formulario_juri()
+    st.stop()
+
 _tentar_restaurar_sessao_auth()
 
 sessao = _sessao_auth()
@@ -2216,7 +2402,7 @@ _renderizar_titulo_plataforma()
 
 pagina = st.radio(
     "Nav",
-    ["Resumo", "Relatórios", "Definições"],
+    ["Resumo", "Relatórios", "Apresentações", "Definições"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -2267,6 +2453,8 @@ if pagina == "Definições":
     _pagina_configuracao()
 elif pagina == "Resumo":
     _pagina_resumo(alunos)
+elif pagina == "Apresentações":
+    _pagina_apresentacoes(alunos)
 elif not alunos:
     st.info("Importe relatórios .docx na barra lateral.")
 else:

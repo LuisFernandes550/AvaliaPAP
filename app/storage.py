@@ -80,6 +80,22 @@ class PapStorage:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(alunos)")}
             if "tema_pap" not in cols:
                 conn.execute("ALTER TABLE alunos ADD COLUMN tema_pap TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS avaliacoes_juri (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    aluno_id INTEGER NOT NULL,
+                    juri_nome TEXT NOT NULL,
+                    email_juri TEXT,
+                    criterio TEXT NOT NULL,
+                    nota INTEGER NOT NULL,
+                    ano_letivo TEXT NOT NULL,
+                    avaliado_em TEXT NOT NULL,
+                    UNIQUE(aluno_id, juri_nome, criterio, ano_letivo),
+                    FOREIGN KEY (aluno_id) REFERENCES alunos(id)
+                )
+                """
+            )
 
     def guardar_aluno(self, aluno: AlunoRelatorio) -> int:
         with self._conn() as conn:
@@ -161,6 +177,7 @@ class PapStorage:
     def remover_aluno(self, aluno_id: int) -> None:
         with self._conn() as conn:
             conn.execute("DELETE FROM avaliacoes WHERE aluno_id = ?", (aluno_id,))
+            conn.execute("DELETE FROM avaliacoes_juri WHERE aluno_id = ?", (aluno_id,))
             conn.execute("DELETE FROM resumos_capitulos WHERE aluno_id = ?", (aluno_id,))
             conn.execute("DELETE FROM alunos WHERE id = ?", (aluno_id,))
 
@@ -244,6 +261,76 @@ class PapStorage:
                 """,
                 params,
             )
+            return cursor.rowcount
+
+    def guardar_avaliacao_juri(
+        self,
+        aluno_id: int,
+        juri_nome: str,
+        criterio: str,
+        nota: int,
+        ano_letivo: str,
+        email_juri: str = "",
+    ) -> None:
+        from app.apresentacoes import NOTA_MAXIMA_FORM, NOTA_MINIMA_FORM
+
+        nota = max(NOTA_MINIMA_FORM, min(NOTA_MAXIMA_FORM, int(nota)))
+        agora = datetime.now().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO avaliacoes_juri
+                    (aluno_id, juri_nome, email_juri, criterio, nota, ano_letivo, avaliado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(aluno_id, juri_nome, criterio, ano_letivo) DO UPDATE SET
+                    nota = excluded.nota,
+                    email_juri = excluded.email_juri,
+                    avaliado_em = excluded.avaliado_em
+                """,
+                (aluno_id, juri_nome.strip(), email_juri.strip(), criterio, nota, ano_letivo, agora),
+            )
+
+    def listar_avaliacoes_juri(self, ano_letivo: str) -> list:
+        from app.apresentacoes import AvaliacaoJuri
+
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM avaliacoes_juri
+                WHERE ano_letivo = ?
+                ORDER BY aluno_id, juri_nome, criterio
+                """,
+                (ano_letivo,),
+            ).fetchall()
+        return [
+            AvaliacaoJuri(
+                aluno_id=row["aluno_id"],
+                juri_nome=row["juri_nome"],
+                criterio=row["criterio"],
+                nota=row["nota"],
+                ano_letivo=row["ano_letivo"],
+                email_juri=row["email_juri"] or "",
+                avaliado_em=datetime.fromisoformat(row["avaliado_em"]),
+            )
+            for row in rows
+        ]
+
+    def apagar_avaliacoes_juri(
+        self,
+        ano_letivo: str,
+        aluno_id: int | None = None,
+        juri_nome: str | None = None,
+    ) -> int:
+        sql = "DELETE FROM avaliacoes_juri WHERE ano_letivo = ?"
+        params: list = [ano_letivo]
+        if aluno_id is not None:
+            sql += " AND aluno_id = ?"
+            params.append(aluno_id)
+        if juri_nome is not None:
+            sql += " AND juri_nome = ?"
+            params.append(juri_nome)
+        with self._conn() as conn:
+            cursor = conn.execute(sql, params)
             return cursor.rowcount
 
     @staticmethod
