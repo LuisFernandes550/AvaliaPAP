@@ -33,6 +33,7 @@ from app.app_settings import (
     guardar_configuracao_app,
     titulo_app,
 )
+from app.auth import AuthStorage, Utilizador
 from app.formulario_juri import renderizar_formulario_juri
 from app.backup import descricao_armazenamento, exportar_backup, importar_backup
 from app.config import ACTA_PATH, EM_STREAMLIT_CLOUD, NOTA_MAXIMA, RELATORIOS_DIR
