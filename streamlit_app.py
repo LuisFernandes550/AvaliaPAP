@@ -16,8 +16,6 @@ from app.ai_evaluator import avaliar_relatorio, ia_disponivel, resumir_capitulos
 from app.apresentacoes import (
     ANO_LETIVO_APRESENTACAO,
     CRITERIOS_FORM_APRESENTACAO,
-    NOTA_MAXIMA_FORM,
-    NOTA_MINIMA_FORM,
     NUM_JURIS,
     ConfigJurisApresentacao,
     calcular_medias_aluno,
@@ -25,6 +23,7 @@ from app.apresentacoes import (
     carregar_config_juris,
     guardar_config_juris,
     sincronizar_medias_para_acta,
+    url_formulario_juri,
 )
 from app.acta_excel import sincronizar_acta
 from app.app_settings import (
@@ -1003,67 +1002,6 @@ def _pagina_backup_dados(sessao: dict) -> None:
     st.divider()
 
 
-def _pagina_formulario_juri() -> None:
-    """Formulário público para cada membro do júri (sem login)."""
-    config = carregar_config_juris()
-    alunos = storage.listar_alunos()
-
-    st.markdown(
-        f"### Avaliação da Defesa da PAP TGPSI\n"
-        f"**Ano letivo {config.ano_letivo}**"
-    )
-    st.caption(
-        "Atribua uma nota de **0 a 20** a cada parâmetro. "
-        "As notas ficam visíveis no separador **Apresentações**."
-    )
-
-    if not alunos:
-        st.warning("Ainda não há alunos importados. Importe relatórios .docx na aplicação principal.")
-        return
-
-    if st.session_state.pop("_juri_form_ok", False):
-        st.success("Avaliação registada com sucesso. Pode submeter outra ou fechar esta página.")
-
-    with st.form("form_juri_apresentacao", clear_on_submit=False):
-        email = st.text_input("Email", placeholder="seu.email@escola.pt")
-        juri = st.selectbox("Nome do Júri *", config.juris)
-        opcoes_alunos = {a.nome: a.id for a in alunos}
-        nome_aluno = st.selectbox("Nome do Aluno *", list(opcoes_alunos.keys()))
-        st.markdown("---")
-        notas: dict[str, int] = {}
-        for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
-            notas[chave] = st.number_input(
-                f"{rotulo} *",
-                min_value=NOTA_MINIMA_FORM,
-                max_value=NOTA_MAXIMA_FORM,
-                value=NOTA_MINIMA_FORM,
-                step=1,
-            )
-        col_env, col_lim = st.columns(2)
-        enviar = col_env.form_submit_button("Enviar", type="primary", use_container_width=True)
-        limpar = col_lim.form_submit_button("Limpar formulário", use_container_width=True)
-
-    if limpar:
-        st.rerun()
-
-    if enviar:
-        if not juri.strip():
-            st.error("Seleccione o nome do júri.")
-            return
-        aluno_id = opcoes_alunos[nome_aluno]
-        for chave, nota in notas.items():
-            storage.guardar_avaliacao_juri(
-                aluno_id,
-                juri,
-                chave,
-                int(nota),
-                config.ano_letivo,
-                email_juri=email.strip(),
-            )
-        st.session_state["_juri_form_ok"] = True
-        st.rerun()
-
-
 def _tabela_apresentacoes_aluno(
     aluno: AlunoRelatorio,
     config: ConfigJurisApresentacao,
@@ -1100,11 +1038,11 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
     st.caption(f"Ano letivo **{config.ano_letivo}** — notas atribuídas por **{NUM_JURIS} júris**.")
 
     col_link, col_sync = st.columns([3, 1])
+    url_form = url_formulario_juri()
     with col_link:
-        st.markdown(
-            "**Formulário de avaliação (júris):** "
-            "[Abrir formulário](?formulario=juri) — partilhe este link com cada membro do júri."
-        )
+        st.markdown("**Formulário de avaliação (júris)** — partilhe este link:")
+        st.code(url_form, language=None)
+        st.link_button("Abrir formulário", url_form, use_container_width=False)
     with col_sync:
         if st.button("Sincronizar médias → Acta", type="primary", use_container_width=True):
             n, avisos = sincronizar_medias_para_acta(storage, config.ano_letivo)
@@ -1163,10 +1101,10 @@ def _pagina_config_juris(sessao: dict) -> None:
             )
         )
         st.success("Configuração dos júris guardada.")
-    st.markdown(
-        f"[Abrir formulário de avaliação](?formulario=juri) "
-        f"(ano letivo {config.ano_letivo})"
-    )
+    url_form = url_formulario_juri()
+    st.markdown(f"**Link do formulário** (ano letivo {config.ano_letivo}):")
+    st.code(url_form, language=None)
+    st.link_button("Abrir formulário", url_form)
     st.divider()
 
 
@@ -2386,11 +2324,6 @@ def _pagina_resumo(alunos: list[AlunoRelatorio]) -> None:
 
 
 _inicializar_instrucoes()
-
-if st.query_params.get("formulario") == "juri":
-    _renderizar_titulo_plataforma()
-    _pagina_formulario_juri()
-    st.stop()
 
 _tentar_restaurar_sessao_auth()
 

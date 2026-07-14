@@ -5,25 +5,27 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
-from app.config import JURIS_APRESENTACAO_PATH, NOTA_MAXIMA
-from app.models import CriterioAvaliacao, ResultadoCriterio, arredondar_excel
+from app.config import EM_STREAMLIT_CLOUD, JURIS_APRESENTACAO_PATH, NOTA_MAXIMA, _ler_config
+from app.models import (
+    CRITERIO_LABELS,
+    CRITERIOS_POR_SECAO,
+    ResultadoCriterio,
+    SecaoAvaliacao,
+    arredondar_excel,
+)
 
 ANO_LETIVO_APRESENTACAO = "2025/26"
 NOTA_MINIMA_FORM = 0
 NOTA_MAXIMA_FORM = NOTA_MAXIMA
 NUM_JURIS = 5
 
-# Parâmetros do formulário (Google Form TGPSI) → chave interna
+# Secção C da Acta — mesmos critérios da grelha do Resumo
 CRITERIOS_FORM_APRESENTACAO: list[tuple[str, str]] = [
-    ("capacidade_sintese", "Capacidade de síntese"),
-    ("argumentacao_defesa", "Qualidade de argumentação na defesa do projeto"),
-    ("adequacao_recursos", "Adequação dos recursos utilizados na exposição"),
-    ("estrategias_apresentacao", "Qualidade das estratégias utilizadas na apresentação"),
+    (c.value, CRITERIO_LABELS[c])
+    for c in CRITERIOS_POR_SECAO[SecaoAvaliacao.APRESENTACAO]
 ]
 
-_CHAVES_FORM = {chave for chave, _ in CRITERIOS_FORM_APRESENTACAO}
 _LABELS_FORM = dict(CRITERIOS_FORM_APRESENTACAO)
 
 
@@ -48,6 +50,18 @@ class AvaliacaoJuri:
     def __post_init__(self) -> None:
         if self.avaliado_em is None:
             self.avaliado_em = datetime.now()
+
+
+def url_formulario_juri() -> str:
+    """URL directa do formulário (página multipage, sem query params estranhos)."""
+    base = _ler_config("APP_URL")
+    if not base:
+        base = (
+            "https://avaliapap.streamlit.app"
+            if EM_STREAMLIT_CLOUD
+            else "http://localhost:8501"
+        )
+    return f"{base.rstrip('/')}/Formulario_Juri"
 
 
 def carregar_config_juris() -> ConfigJurisApresentacao:
@@ -106,27 +120,11 @@ def calcular_medias_aluno(
     }
 
 
-def nota_recursos_apresentacao(medias: dict[str, float | None]) -> int | None:
-    """Combina adequação de recursos + estratégias numa nota para a Acta."""
-    rec = medias.get("adequacao_recursos")
-    est = medias.get("estrategias_apresentacao")
-    if rec is None and est is None:
-        return None
-    if rec is None:
-        return int(arredondar_excel(est, 0))  # type: ignore[arg-type]
-    if est is None:
-        return int(arredondar_excel(rec, 0))
-    return int(arredondar_excel((rec + est) / 2, 0))
-
-
 def sincronizar_medias_para_acta(
     storage,
     ano_letivo: str | None = None,
 ) -> tuple[int, list[str]]:
-    """
-    Calcula médias dos júris e grava na tabela avaliacoes (secção C).
-    Devolve (nº critérios actualizados, avisos).
-    """
+    """Calcula médias dos júris e grava na tabela avaliacoes (secção C)."""
     config = carregar_config_juris()
     ano = ano_letivo or config.ano_letivo
     avaliacoes = storage.listar_avaliacoes_juri(ano)
@@ -138,16 +136,8 @@ def sincronizar_medias_para_acta(
         if not any(v is not None for v in medias.values()):
             continue
 
-        mapeamento: list[tuple[CriterioAvaliacao, Optional[int]]] = [
-            (CriterioAvaliacao.CAPACIDADE_SINTESE, _nota_acta(medias.get("capacidade_sintese"))),
-            (
-                CriterioAvaliacao.ARGUMENTACAO_DEFESA,
-                _nota_acta(medias.get("argumentacao_defesa")),
-            ),
-            (CriterioAvaliacao.RECURSOS_APRESENTACAO, nota_recursos_apresentacao(medias)),
-        ]
-
-        for criterio, nota in mapeamento:
+        for criterio in CRITERIOS_POR_SECAO[SecaoAvaliacao.APRESENTACAO]:
+            nota = _nota_acta(medias.get(criterio.value))
             if nota is None:
                 continue
             storage.guardar_avaliacao(
