@@ -2556,6 +2556,10 @@ def _limpar_dados_secao_resumo(
         criterios.append(criterio_auto)
     removidos = storage.apagar_avaliacoes_criterios(aluno_ids, criterios)
     _limpar_session_notas_criterios(aluno_ids, criterios)
+    if secao == SecaoAvaliacao.APRESENTACAO:
+        ano_letivo = carregar_config_juris().ano_letivo
+        for aluno_id in aluno_ids:
+            storage.apagar_avaliacoes_juri(ano_letivo, aluno_id=aluno_id)
     st.session_state.pop("_acta_bytes", None)
     return removidos
 
