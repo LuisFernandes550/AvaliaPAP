@@ -50,6 +50,7 @@ from app.models import (
     CRITERIO_MANUAL,
     CRITERIOS_MANUAIS,
     CRITERIOS_POR_SECAO,
+    AUTOAVALIACAO_POR_SECAO,
     SECAO_LABELS,
     SECAO_PONDERACAO,
     AlunoRelatorio,
@@ -1487,6 +1488,8 @@ CRITERIO_ICONES: dict[CriterioAvaliacao, str] = {
     CriterioAvaliacao.RECURSOS_APRESENTACAO: "🖥",
     CriterioAvaliacao.ARGUMENTACAO_DEFESA: "💬",
     CriterioAvaliacao.AUTOAVALIACAO: "✍",
+    CriterioAvaliacao.AUTOAVALIACAO_A: "✍",
+    CriterioAvaliacao.AUTOAVALIACAO_B: "✍",
 }
 
 SECAO_ICONES = {
@@ -2260,6 +2263,19 @@ def _linhas_secao(
             linha[chave] = int(av[criterio].nota) if criterio in av else None
         linhas.append(linha)
 
+    criterio_auto = AUTOAVALIACAO_POR_SECAO.get(secao)
+    if criterio_auto is not None:
+        rotulo_auto = _rotulo_criterio_resumo(criterio_auto)
+        mapa_itens[rotulo_auto] = criterio_auto
+        linha_auto = {"Critério": rotulo_auto}
+        for (_, aluno), chave in zip(colunas, chaves):
+            if aluno is None:
+                linha_auto[chave] = None
+                continue
+            av = avaliacoes[aluno.id]
+            linha_auto[chave] = int(av[criterio_auto].nota) if criterio_auto in av else None
+        linhas.append(linha_auto)
+
     linha_tot = {"Critério": "Total:"}
     for (_, aluno), chave in zip(colunas, chaves):
         if aluno is None:
@@ -2458,7 +2474,10 @@ def _limpar_dados_secao_resumo(
     colunas: list[tuple[str, AlunoRelatorio | None]],
 ) -> int:
     aluno_ids = _ids_alunos_colunas(colunas)
-    criterios = CRITERIOS_POR_SECAO[secao]
+    criterios = list(CRITERIOS_POR_SECAO[secao])
+    criterio_auto = AUTOAVALIACAO_POR_SECAO.get(secao)
+    if criterio_auto is not None:
+        criterios.append(criterio_auto)
     removidos = storage.apagar_avaliacoes_criterios(aluno_ids, criterios)
     _limpar_session_notas_criterios(aluno_ids, criterios)
     st.session_state.pop("_acta_bytes", None)

@@ -46,6 +46,9 @@ class CriterioAvaliacao(str, Enum):
     RECURSOS_APRESENTACAO = "recursos_apresentacao"
     ARGUMENTACAO_DEFESA = "argumentacao_defesa"
     AUTOAVALIACAO = "autoavaliacao"
+    # Autoavaliações por secção (apenas informativas na grelha do Resumo)
+    AUTOAVALIACAO_A = "autoavaliacao_a"
+    AUTOAVALIACAO_B = "autoavaliacao_b"
 
 
 class SecaoAvaliacao(str, Enum):
@@ -86,6 +89,14 @@ CRITERIO_LABELS = {
     ),
     CriterioAvaliacao.ARGUMENTACAO_DEFESA: "Qualidade de argumentação na defesa do projeto",
     CriterioAvaliacao.AUTOAVALIACAO: "Autoavaliação",
+    CriterioAvaliacao.AUTOAVALIACAO_A: "Autoavaliação (A)",
+    CriterioAvaliacao.AUTOAVALIACAO_B: "Autoavaliação (B)",
+}
+
+# Autoavaliação informativa por secção (não conta para médias/nota final)
+AUTOAVALIACAO_POR_SECAO = {
+    SecaoAvaliacao.DESENVOLVIMENTO: CriterioAvaliacao.AUTOAVALIACAO_A,
+    SecaoAvaliacao.RELATORIO: CriterioAvaliacao.AUTOAVALIACAO_B,
 }
 
 CRITERIOS_POR_SECAO: dict[SecaoAvaliacao, list[CriterioAvaliacao]] = {
