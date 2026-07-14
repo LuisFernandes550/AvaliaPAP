@@ -961,7 +961,25 @@ def _pagina_nomes_alunos() -> None:
         },
         key="editor_nomes_turma",
     )
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
+    if c4.button("Ordenar A→Z", key="ordenar_nomes_turma"):
+        atuais = [
+            AlunoTurma(
+                nome=str(row["Nome completo"]).strip(),
+                chave_ficheiro=str(row.get("Chave no ficheiro") or "").strip(),
+                tema=str(row.get("Tema PAP") or "").strip(),
+            )
+            for _, row in edited.iterrows()
+            if str(row.get("Nome completo", "")).strip()
+        ]
+        if not atuais:
+            st.error("Não há nomes para ordenar.")
+        else:
+            atuais.sort(key=lambda a: a.nome.casefold())
+            guardar_nomes_turma(atuais)
+            st.session_state.pop("editor_nomes_turma", None)
+            st.success("Nomes ordenados alfabeticamente.")
+            st.rerun()
     if c1.button("Guardar nomes", type="primary", key="guardar_nomes_turma"):
         novos = [
             AlunoTurma(
