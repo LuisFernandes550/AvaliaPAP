@@ -88,15 +88,10 @@ def renderizar_formulario_juri(storage) -> None:
 
         resultado = st.session_state.pop("_juri_form_ok", None)
         if resultado:
-            st.success("Avaliação registada com sucesso.")
-            with st.container(border=True):
-                st.markdown(f"**Júri:** {resultado['juri']}")
-                st.markdown(f"**Aluno:** {resultado['aluno']}")
-                for rotulo, nota in resultado["notas"].items():
-                    st.markdown(f"- {rotulo}: **{nota}** val.")
-                media_txt = f"{resultado['media']:.1f}".replace(".", ",")
-                st.markdown(f"**Média desta avaliação:** {media_txt} val.")
-            st.info("Pode avaliar outro aluno abaixo.")
+            st.success(
+                f"Avaliação de **{resultado['aluno']}** registada com sucesso "
+                f"({resultado['juri']})."
+            )
 
         st.markdown("#### 1. Identificação")
         email = st.text_input(
@@ -147,9 +142,6 @@ def renderizar_formulario_juri(storage) -> None:
                 )
                 st.markdown(f"Nota seleccionada: **{notas[chave]}** / {NOTA_MAXIMA_FORM}")
 
-        valores = list(notas.values())
-        media = sum(valores) / len(valores) if valores else 0.0
-
         col_env, col_lim = st.columns(2)
         enviar = col_env.button(
             "Registar avaliação",
@@ -187,7 +179,5 @@ def renderizar_formulario_juri(storage) -> None:
         st.session_state["_juri_form_ok"] = {
             "juri": juri,
             "aluno": nome_aluno,
-            "notas": {rotulo: notas[chave] for chave, rotulo in CRITERIOS_FORM_APRESENTACAO},
-            "media": media,
         }
         st.rerun()
