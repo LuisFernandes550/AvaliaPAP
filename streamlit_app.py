@@ -1426,10 +1426,6 @@ def _pagina_config_juris(sessao: dict) -> None:
         )
         st.success("Configuração dos júris guardada.")
         st.rerun()
-    url_form = url_formulario_juri()
-    st.markdown(f"**Link do formulário** (ano letivo {config.ano_letivo}):")
-    st.code(url_form, language=None)
-    st.link_button("Abrir formulário", url_form)
     st.divider()
 
 
