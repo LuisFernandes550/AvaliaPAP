@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from app.apresentacoes import (
     CRITERIOS_FORM_APRESENTACAO,
@@ -12,17 +13,49 @@ from app.apresentacoes import (
 )
 
 
+def _impedir_teclado_nas_caixas() -> None:
+    """Marca os campos das caixas de seleção como não editáveis.
+
+    No tablet, evita que o teclado do ecrã apareça (e tape as opções) quando
+    se abre uma caixa de seleção, mantendo a lista a abrir normalmente.
+    """
+    components.html(
+        """
+        <script>
+        (function() {
+            var doc = window.parent ? window.parent.document : document;
+            function aplicar() {
+                var inputs = doc.querySelectorAll('[data-baseweb="select"] input');
+                inputs.forEach(function(inp) {
+                    inp.setAttribute('inputmode', 'none');
+                    inp.setAttribute('readonly', 'readonly');
+                    inp.setAttribute('autocomplete', 'off');
+                });
+            }
+            aplicar();
+            try {
+                var obs = new MutationObserver(aplicar);
+                obs.observe(doc.body, { childList: true, subtree: true });
+            } catch (e) {}
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _escolher_da_lista(
     label: str,
     opcoes: list[str],
     *,
-    horizontal: bool = False,
+    placeholder: str,
 ) -> str | None:
-    """Botões de opção: escolha só da lista, sem campo de texto (não abre teclado)."""
+    """Caixa de seleção sem pesquisa (não abre teclado no tablet)."""
+    kwargs: dict = {"index": None, "placeholder": placeholder}
     try:
-        return st.radio(label, opcoes, index=None, horizontal=horizontal)
+        return st.selectbox(label, opcoes, filter_mode=None, **kwargs)
     except TypeError:
-        return st.radio(label, opcoes, horizontal=horizontal)
+        return st.selectbox(label, opcoes, **kwargs)
 
 
 def renderizar_formulario_juri(storage) -> None:
@@ -49,10 +82,18 @@ def renderizar_formulario_juri(storage) -> None:
 
     with st.form("form_juri_apresentacao", clear_on_submit=False):
         email = st.text_input("Email", placeholder="seu.email@escola.pt")
-        juri = _escolher_da_lista("Nome do júri *", config.juris)
+        juri = _escolher_da_lista(
+            "Nome do júri *",
+            config.juris,
+            placeholder="Seleccione o seu nome",
+        )
         opcoes_alunos = {a.nome: a.id for a in alunos}
         nomes_alunos = list(opcoes_alunos.keys())
-        nome_aluno = _escolher_da_lista("Aluno a avaliar *", nomes_alunos)
+        nome_aluno = _escolher_da_lista(
+            "Aluno a avaliar *",
+            nomes_alunos,
+            placeholder="Seleccione o aluno",
+        )
         st.divider()
         notas: dict[str, int] = {}
         for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
@@ -66,6 +107,8 @@ def renderizar_formulario_juri(storage) -> None:
         col_env, col_lim = st.columns(2)
         enviar = col_env.form_submit_button("Enviar", type="primary", use_container_width=True)
         limpar = col_lim.form_submit_button("Limpar formulário", use_container_width=True)
+
+    _impedir_teclado_nas_caixas()
 
     if limpar:
         st.rerun()
