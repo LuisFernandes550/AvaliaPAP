@@ -1283,6 +1283,18 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
         f"({len(avaliacoes_juri)} registo(s))."
     )
 
+    sync_res = st.session_state.pop("_sync_acta_result", None)
+    if sync_res:
+        if sync_res["n"]:
+            st.success(
+                f"✓ Sincronização concluída: {sync_res['n']} nota(s) atualizadas "
+                "na grelha do Resumo / Acta."
+            )
+        else:
+            st.info("Sincronização concluída — não havia notas novas para atualizar.")
+        for aviso in sync_res.get("avisos", []):
+            st.warning(aviso)
+
     col_link, col_qr, col_ref, col_sync = st.columns([2.6, 1, 1, 1])
     url_form = url_formulario_juri()
     with col_link:
@@ -1300,12 +1312,11 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
             st.rerun()
     with col_sync:
         if st.button("Sincronizar médias → Acta", type="primary", use_container_width=True):
-            n, avisos = sincronizar_medias_para_acta(storage, config.ano_letivo)
-            if n:
-                st.session_state.pop("_acta_bytes", None)
-                st.success(f"{n} nota(s) actualizadas na grelha do Resumo / Acta.")
-            for aviso in avisos:
-                st.warning(aviso)
+            with st.spinner("A sincronizar médias para a Acta… aguarde."):
+                n, avisos = sincronizar_medias_para_acta(storage, config.ano_letivo)
+                if n:
+                    st.session_state.pop("_acta_bytes", None)
+            st.session_state["_sync_acta_result"] = {"n": n, "avisos": avisos}
             st.rerun()
 
     if not alunos:
