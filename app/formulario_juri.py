@@ -69,7 +69,7 @@ def renderizar_formulario_juri(storage) -> None:
         st.divider()
         notas: dict[str, int] = {}
         for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
-            notas[chave] = st.number_input(
+            notas[chave] = st.slider(
                 f"{rotulo} *",
                 min_value=NOTA_MINIMA_FORM,
                 max_value=NOTA_MAXIMA_FORM,
