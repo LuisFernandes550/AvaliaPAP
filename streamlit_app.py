@@ -2735,7 +2735,13 @@ with st.sidebar:
     st.subheader("PDFs de pré-visualização")
     _mostrar_resultado_import_pdf()
     st.caption("Nome igual ao .docx: RelatorioPAP_Nome.pdf")
-    uploads_pdf = st.file_uploader("Extensão (.pdf)", type=["pdf"], accept_multiple_files=True)
+    _pdf_uploader_key = f"upload_pdf_{st.session_state.get('_pdf_uploader_v', 0)}"
+    uploads_pdf = st.file_uploader(
+        "Extensão (.pdf)",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key=_pdf_uploader_key,
+    )
     if uploads_pdf and st.button("Importar PDFs", type="secondary"):
         total = len(uploads_pdf)
         with st.spinner(f"A importar {total} PDF(s)…"):
@@ -2745,6 +2751,9 @@ with st.sidebar:
             "total": total,
             "avisos": avisos,
         }
+        st.session_state["_pdf_uploader_v"] = (
+            st.session_state.get("_pdf_uploader_v", 0) + 1
+        )
         st.rerun()
     st.divider()
     alunos = storage.listar_alunos()
