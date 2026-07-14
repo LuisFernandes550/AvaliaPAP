@@ -149,17 +149,6 @@ def renderizar_formulario_juri(storage) -> None:
 
         valores = list(notas.values())
         media = sum(valores) / len(valores) if valores else 0.0
-        media_txt = f"{media:.1f}".replace(".", ",")
-
-        st.markdown("#### 3. Confirmar e enviar")
-        with st.container(border=True):
-            st.markdown(f"**Júri:** {juri}")
-            st.markdown(f"**Aluno:** {nome_aluno}")
-            cols = st.columns(4)
-            for col, (chave, rotulo) in zip(cols, CRITERIOS_FORM_APRESENTACAO):
-                abrev = rotulo.split()[0][:12]
-                col.metric(abrev, f"{notas[chave]} val.")
-            st.markdown(f"**Média:** {media_txt} val.")
 
         col_env, col_lim = st.columns(2)
         enviar = col_env.button(
