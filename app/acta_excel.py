@@ -33,6 +33,7 @@ COLUNA_NOMES_AUXILIAR = 2
 COLUNA_TEMAS_AUXILIAR = 4
 PRIMEIRA_LINHA_ALUNO_AUXILIAR = 24
 PRIMEIRA_COLUNA_ALUNO = 10
+LARGURA_COLUNA_ALUNO = 5
 
 LINHAS_CRITERIOS = {
     15: CriterioAvaliacao.DEFINICAO_OBJETIVOS,
@@ -251,9 +252,6 @@ def _garantir_colunas_alunos(ws, n_alunos: int) -> int:
     for i in range(existentes, n_alunos):
         destino = PRIMEIRA_COLUNA_ALUNO + i
         destino_letra = get_column_letter(destino)
-        ws.column_dimensions[destino_letra].width = ws.column_dimensions[
-            origem_letra
-        ].width
 
         for row in range(1, ws.max_row + 1):
             dst = ws.cell(row, destino)
@@ -527,7 +525,10 @@ def sincronizar_acta(
         nome_folha_av = ws_av.title
         nome_folha_aux = ws_aux.title
 
-        _garantir_colunas_alunos(ws_av, len(alunos_ordem))
+        total_cols_aluno = _garantir_colunas_alunos(ws_av, len(alunos_ordem))
+        for i in range(total_cols_aluno):
+            letra = get_column_letter(PRIMEIRA_COLUNA_ALUNO + i)
+            ws_av.column_dimensions[letra].width = LARGURA_COLUNA_ALUNO
 
         ultima_col = max(
             ws_av.max_column,
