@@ -1039,6 +1039,12 @@ def _pagina_backup_dados(sessao: dict) -> None:
     )
     st.info(f"Armazenamento actual: **{descricao_armazenamento()}**")
 
+    restauro = st.session_state.pop("_backup_restore_result", None)
+    if restauro:
+        st.success(f"✓ Backup restaurado com sucesso ({restauro['n']} ficheiros).")
+        for aviso in restauro.get("avisos", []):
+            st.warning(aviso)
+
     col_dl, col_up = st.columns(2)
     with col_dl:
         st.caption("Clique **Gerar** antes de descarregar — evita lentidão ao editar definições.")
@@ -1103,11 +1109,10 @@ def _pagina_backup_dados(sessao: dict) -> None:
             st.caption(f"Ficheiro seleccionado: {upload.name} ({mb_up:.1f} MB)")
         if upload and st.button("Restaurar backup", type="primary", key="btn_import_backup"):
             try:
-                n, avisos = importar_backup(upload.getvalue())
-                _invalidar_cache_backup()
-                st.success(f"Backup restaurado ({n} ficheiros). A recarregar…")
-                for aviso in avisos:
-                    st.warning(aviso)
+                with st.spinner("A restaurar backup… aguarde, não feche a página."):
+                    n, avisos = importar_backup(upload.getvalue())
+                    _invalidar_cache_backup()
+                st.session_state["_backup_restore_result"] = {"n": n, "avisos": avisos}
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
