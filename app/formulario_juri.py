@@ -12,22 +12,17 @@ from app.apresentacoes import (
 )
 
 
-def _selectbox_lista(
+def _escolher_da_lista(
     label: str,
     opcoes: list[str],
     *,
-    placeholder: str | None = None,
+    horizontal: bool = False,
 ) -> str | None:
-    """Lista suspensa: só permite escolher nomes da lista, sem escrever novos."""
-    kwargs: dict = {"accept_new_options": False}
-    if placeholder:
-        kwargs["index"] = None
-        kwargs["placeholder"] = placeholder
+    """Botões de opção: escolha só da lista, sem campo de texto (não abre teclado)."""
     try:
-        return st.selectbox(label, opcoes, filter_mode=None, **kwargs)
+        return st.radio(label, opcoes, index=None, horizontal=horizontal)
     except TypeError:
-        kwargs.pop("accept_new_options", None)
-        return st.selectbox(label, opcoes, **kwargs)
+        return st.radio(label, opcoes, horizontal=horizontal)
 
 
 def renderizar_formulario_juri(storage) -> None:
@@ -54,18 +49,10 @@ def renderizar_formulario_juri(storage) -> None:
 
     with st.form("form_juri_apresentacao", clear_on_submit=False):
         email = st.text_input("Email", placeholder="seu.email@escola.pt")
-        juri = _selectbox_lista(
-            "Nome do júri *",
-            config.juris,
-            placeholder="Seleccione o seu nome na lista",
-        )
+        juri = _escolher_da_lista("Nome do júri *", config.juris)
         opcoes_alunos = {a.nome: a.id for a in alunos}
         nomes_alunos = list(opcoes_alunos.keys())
-        nome_aluno = _selectbox_lista(
-            "Aluno a avaliar *",
-            nomes_alunos,
-            placeholder="Seleccione o aluno na lista",
-        )
+        nome_aluno = _escolher_da_lista("Aluno a avaliar *", nomes_alunos)
         st.divider()
         notas: dict[str, int] = {}
         for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
