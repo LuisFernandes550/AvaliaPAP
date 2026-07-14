@@ -12,6 +12,24 @@ from app.apresentacoes import (
 )
 
 
+def _selectbox_lista(
+    label: str,
+    opcoes: list[str],
+    *,
+    placeholder: str | None = None,
+) -> str | None:
+    """Lista suspensa: só permite escolher nomes da lista, sem escrever novos."""
+    kwargs: dict = {"accept_new_options": False}
+    if placeholder:
+        kwargs["index"] = None
+        kwargs["placeholder"] = placeholder
+    try:
+        return st.selectbox(label, opcoes, filter_mode="none", **kwargs)
+    except TypeError:
+        kwargs.pop("accept_new_options", None)
+        return st.selectbox(label, opcoes, **kwargs)
+
+
 def renderizar_formulario_juri(storage) -> None:
     config = carregar_config_juris()
     alunos = storage.listar_alunos()
@@ -36,9 +54,18 @@ def renderizar_formulario_juri(storage) -> None:
 
     with st.form("form_juri_apresentacao", clear_on_submit=False):
         email = st.text_input("Email", placeholder="seu.email@escola.pt")
-        juri = st.selectbox("Nome do Júri *", config.juris)
+        juri = _selectbox_lista(
+            "Nome do júri *",
+            config.juris,
+            placeholder="Seleccione o seu nome na lista",
+        )
         opcoes_alunos = {a.nome: a.id for a in alunos}
-        nome_aluno = st.selectbox("Nome do Aluno *", list(opcoes_alunos.keys()))
+        nomes_alunos = list(opcoes_alunos.keys())
+        nome_aluno = _selectbox_lista(
+            "Aluno a avaliar *",
+            nomes_alunos,
+            placeholder="Seleccione o aluno na lista",
+        )
         st.divider()
         notas: dict[str, int] = {}
         for chave, rotulo in CRITERIOS_FORM_APRESENTACAO:
@@ -57,8 +84,11 @@ def renderizar_formulario_juri(storage) -> None:
         st.rerun()
 
     if enviar:
-        if not juri.strip():
-            st.error("Seleccione o nome do júri.")
+        if not juri or str(juri) not in config.juris:
+            st.error("Seleccione o nome do júri na lista.")
+            return
+        if not nome_aluno or nome_aluno not in opcoes_alunos:
+            st.error("Seleccione o aluno na lista.")
             return
         aluno_id = opcoes_alunos[nome_aluno]
         for chave, nota in notas.items():
