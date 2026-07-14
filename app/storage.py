@@ -336,15 +336,18 @@ class PapStorage:
         aluno_id: int,
         juri_nome: str,
         ano_letivo: str,
+        *,
+        apenas_formulario: bool = False,
     ) -> dict[str, int]:
+        sql = """
+            SELECT criterio, nota FROM avaliacoes_juri
+            WHERE aluno_id = ? AND juri_nome = ? AND ano_letivo = ?
+        """
+        params: list = [aluno_id, juri_nome.strip(), ano_letivo]
+        if apenas_formulario:
+            sql += " AND COALESCE(email_juri, '') != 'edição manual'"
         with self._conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT criterio, nota FROM avaliacoes_juri
-                WHERE aluno_id = ? AND juri_nome = ? AND ano_letivo = ?
-                """,
-                (aluno_id, juri_nome.strip(), ano_letivo),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return {row["criterio"]: int(row["nota"]) for row in rows}
 
     def apagar_avaliacoes_juri(

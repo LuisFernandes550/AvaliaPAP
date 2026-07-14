@@ -13,8 +13,6 @@ from app.apresentacoes import (
     carregar_config_juris,
 )
 
-_CHAVES_CRITERIOS = [chave for chave, _ in CRITERIOS_FORM_APRESENTACAO]
-
 _AJUDA_CRITERIOS: dict[str, str] = {
     "expressao_oral": "Clareza na fala, fluência, contacto visual e uso adequado da voz e do corpo.",
     "capacidade_sintese": "Organização das ideias, foco nos pontos essenciais e respeito pelo tempo.",
@@ -27,20 +25,16 @@ def _juri_slug(nome: str) -> str:
     return re.sub(r"\W+", "_", nome.strip().lower())[:48]
 
 
-def _avaliacao_previa(
+def _notas_anteriores_formulario(
     storage,
     ano_letivo: str,
     aluno_id: int,
     juri_nome: str,
-) -> dict[str, int] | None:
-    """Só considera avaliação anterior se os 4 critérios existirem e não forem todos 0."""
-    bruto = storage.obter_notas_juri_aluno(aluno_id, juri_nome, ano_letivo)
-    notas = {chave: bruto[chave] for chave in _CHAVES_CRITERIOS if chave in bruto}
-    if len(notas) != len(_CHAVES_CRITERIOS):
-        return None
-    if all(n == NOTA_MINIMA_FORM for n in notas.values()):
-        return None
-    return notas
+) -> dict[str, int]:
+    """Notas submetidas por este júri via formulário (ignora edições na plataforma)."""
+    return storage.obter_notas_juri_aluno(
+        aluno_id, juri_nome, ano_letivo, apenas_formulario=True
+    )
 
 
 def _estilos_formulario_juri() -> None:
@@ -116,25 +110,16 @@ def renderizar_formulario_juri(storage) -> None:
         aluno_id = opcoes_alunos[nome_aluno]
         juri_id = _juri_slug(juri)
 
-        previa = _avaliacao_previa(storage, config.ano_letivo, aluno_id, juri)
-        if previa:
-            rotulos = dict(CRITERIOS_FORM_APRESENTACAO)
-            linhas = [
-                f"- {rotulos[chave]}: **{nota}** val."
-                for chave, nota in previa.items()
-            ]
-            st.warning(
-                f"**{juri}** já avaliou **{nome_aluno}**. "
-                "As notas abaixo substituem a avaliação anterior."
-            )
-            st.markdown("\n".join(linhas))
+        anteriores = _notas_anteriores_formulario(
+            storage, config.ano_letivo, aluno_id, juri
+        )
 
         st.markdown("#### 2. Notas por parâmetro")
         st.caption("Escala de **0 a 20** — arraste o cursor ou clique na barra.")
 
         notas: dict[str, int] = {}
         for num, (chave, rotulo) in enumerate(CRITERIOS_FORM_APRESENTACAO, start=1):
-            valor_inicial = previa.get(chave, NOTA_MINIMA_FORM) if previa else NOTA_MINIMA_FORM
+            valor_inicial = anteriores.get(chave, NOTA_MINIMA_FORM)
             with st.container(border=True):
                 st.markdown(
                     f'<span class="pap-juri-criterio-num">{num}</span>'
