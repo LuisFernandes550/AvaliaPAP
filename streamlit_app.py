@@ -1839,7 +1839,9 @@ def _iniciais_nome(nome: str) -> str:
     if len(partes) == 1:
         return partes[0][:3].upper()
     if len(partes) == 2:
-        return (partes[0][0] + partes[1][0]).upper()
+        ultimo = partes[1]
+        segunda = ultimo[1] if len(ultimo) > 1 else ultimo[0]
+        return (partes[0][0] + ultimo[0] + segunda).upper()
     return (partes[0][0] + partes[1][0] + partes[-1][0]).upper()
 
 
