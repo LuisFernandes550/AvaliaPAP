@@ -617,15 +617,21 @@ def _mostrar_resultado_import_pdf() -> None:
         st.warning(aviso)
 
 
-def _importar_ficheiros(ficheiros) -> int:
+def _importar_ficheiros(ficheiros, progresso=None) -> tuple[int, list[str]]:
     importados = 0
-    for ficheiro in ficheiros:
+    avisos: list[str] = []
+    total = len(ficheiros)
+    for i, ficheiro in enumerate(ficheiros, start=1):
+        if progresso:
+            progresso(i, total, ficheiro.name, "a analisar…")
         destino = RELATORIOS_DIR / ficheiro.name
         destino.write_bytes(ficheiro.getbuffer())
         try:
             info = analisar_relatorio(destino)
-        except Exception as exc:
-            st.sidebar.error(f"Erro em {ficheiro.name}: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            avisos.append(f"✗ {ficheiro.name}: erro ao analisar ({exc}).")
+            if progresso:
+                progresso(i, total, ficheiro.name, "erro")
             continue
         nome = nome_por_ficheiro(ficheiro.name) or info["nome"]
         storage.guardar_aluno(
@@ -640,7 +646,27 @@ def _importar_ficheiros(ficheiros) -> int:
             )
         )
         importados += 1
-    return importados
+        if not nome_por_ficheiro(ficheiro.name):
+            avisos.append(
+                f"⚠ {ficheiro.name}: sem correspondência na turma — nome detetado \"{nome}\"."
+            )
+        if progresso:
+            progresso(i, total, ficheiro.name, f"importado como {nome}")
+    return importados, avisos
+
+
+def _mostrar_resultado_import_docx() -> None:
+    resultado = st.session_state.pop("_docx_import_result", None)
+    if not resultado:
+        return
+    n = resultado["importados"]
+    total = resultado["total"]
+    if n == 0:
+        st.warning("Importação terminada — nenhum relatório foi importado.")
+    else:
+        st.success(f"Importação concluída: **{n}** de **{total}** relatório(s).")
+    for aviso in resultado.get("avisos", []):
+        st.warning(aviso)
 
 
 def _reanalisar_capa(aluno: AlunoRelatorio) -> None:
@@ -2679,9 +2705,23 @@ with st.sidebar:
         st.rerun()
     st.divider()
     st.header("Importar Relatórios")
+    _mostrar_resultado_import_docx()
     uploads = st.file_uploader("Extensão (.docx)", type=["docx"], accept_multiple_files=True)
     if uploads and st.button("Importar", type="primary"):
-        st.success(f"{_importar_ficheiros(uploads)} importado(s).")
+        total = len(uploads)
+        barra = st.progress(0.0, text=f"A importar 0/{total}…")
+        estado = st.empty()
+
+        def _cb(i, total, nome, texto):
+            barra.progress(i / total, text=f"A importar {i}/{total}…")
+            estado.caption(f"[{i}/{total}] {nome} — {texto}")
+
+        n, avisos = _importar_ficheiros(uploads, _cb)
+        st.session_state["_docx_import_result"] = {
+            "importados": n,
+            "total": total,
+            "avisos": avisos,
+        }
         st.rerun()
     st.subheader("PDFs de pré-visualização")
     _mostrar_resultado_import_pdf()
