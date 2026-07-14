@@ -219,15 +219,6 @@ function papClearToken() {{
         sessionStorage.removeItem('pap_auth');
     }} catch (e) {{}}
 }}
-function papLimparUrlAuth() {{
-    try {{
-        var w = papWin();
-        var u = new URL(w.location.href);
-        if (!u.searchParams.has('{_AUTH_QUERY_PARAM}')) return;
-        u.searchParams.delete('{_AUTH_QUERY_PARAM}');
-        w.history.replaceState({{}}, '', u.toString());
-    }} catch (e) {{}}
-}}
 """
 
 
@@ -239,7 +230,22 @@ def _token_do_browser() -> str | None:
         return None
 
 
-def _sincronizar_token_browser(token: str) -> None:
+def _persistir_token_sessao(token: str) -> None:
+    """Mantém o token na URL para sobreviver a F5 (fiável na Streamlit Cloud)."""
+    if st.query_params.get(_AUTH_QUERY_PARAM) != token:
+        st.query_params[_AUTH_QUERY_PARAM] = token
+
+
+def _token_disponivel() -> str | None:
+    return _normalizar_token(
+        st.session_state.get("auth_token")
+        or st.query_params.get(_AUTH_QUERY_PARAM)
+        or _token_do_browser()
+    )
+
+
+def _sincronizar_armazenamento_local(token: str) -> None:
+    """Cópia de backup no browser (fallback se a URL for limpa manualmente)."""
     tok = json.dumps(token)
     components.html(
         f"""
@@ -247,7 +253,6 @@ def _sincronizar_token_browser(token: str) -> None:
         (function() {{
             {_auth_js_helpers()}
             papSetToken({tok});
-            papLimparUrlAuth();
         }})();
         </script>
         """,
@@ -262,7 +267,6 @@ def _limpar_token_browser() -> None:
         (function() {{
             {_auth_js_helpers()}
             papClearToken();
-            papLimparUrlAuth();
         }})();
         </script>
         """,
@@ -328,6 +332,7 @@ def _iniciar_sessao_auth(user: Utilizador, token: str) -> None:
         "role": user.role,
     }
     st.session_state["auth_token"] = token
+    _persistir_token_sessao(token)
 
 
 def _terminar_sessao_auth() -> None:
@@ -344,16 +349,12 @@ def _terminar_sessao_auth() -> None:
 def _tentar_restaurar_sessao_auth() -> None:
     if _sessao_auth():
         return
-    token = _normalizar_token(
-        st.session_state.get("auth_token")
-        or st.query_params.get(_AUTH_QUERY_PARAM)
-        or _token_do_browser()
-    )
+    token = _token_disponivel()
     if token:
         user = auth_storage.utilizador_por_token_sessao(token)
         if user:
             _iniciar_sessao_auth(user, token)
-            _sincronizar_token_browser(token)
+            _sincronizar_armazenamento_local(token)
             return
         st.session_state.pop("auth_token", None)
         if _AUTH_QUERY_PARAM in st.query_params:
@@ -380,8 +381,7 @@ def _pagina_login() -> None:
                 if user:
                     token = auth_storage.criar_sessao(user.id)
                     _iniciar_sessao_auth(user, token)
-                    _sincronizar_token_browser(token)
-                    time.sleep(0.4)
+                    _sincronizar_armazenamento_local(token)
                     st.rerun()
                 else:
                     st.error("Utilizador ou palavra-passe inválidos.")
@@ -2538,13 +2538,12 @@ _tentar_restaurar_sessao_auth()
 
 sessao = _sessao_auth()
 if not sessao:
-    if not st.query_params.get(_AUTH_QUERY_PARAM):
-        st.caption("A restaurar sessão…")
     _pagina_login()
     st.stop()
 
 if token := st.session_state.get("auth_token"):
-    _sincronizar_token_browser(str(token))
+    _persistir_token_sessao(str(token))
+    _sincronizar_armazenamento_local(str(token))
 
 _renderizar_titulo_plataforma()
 
