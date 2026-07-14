@@ -12,6 +12,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, JsCode
 
+from app.ai_evaluator import avaliar_relatorio, ia_disponivel, resumir_capitulos
 from app.apresentacoes import (
     ANO_LETIVO_APRESENTACAO,
     CRITERIOS_FORM_APRESENTACAO,
