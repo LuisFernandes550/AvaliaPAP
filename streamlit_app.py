@@ -2706,7 +2706,13 @@ with st.sidebar:
     st.divider()
     st.header("Importar Relatórios")
     _mostrar_resultado_import_docx()
-    uploads = st.file_uploader("Extensão (.docx)", type=["docx"], accept_multiple_files=True)
+    _docx_uploader_key = f"upload_docx_{st.session_state.get('_docx_uploader_v', 0)}"
+    uploads = st.file_uploader(
+        "Extensão (.docx)",
+        type=["docx"],
+        accept_multiple_files=True,
+        key=_docx_uploader_key,
+    )
     if uploads and st.button("Importar", type="primary"):
         total = len(uploads)
         barra = st.progress(0.0, text=f"A importar 0/{total}…")
@@ -2722,6 +2728,9 @@ with st.sidebar:
             "total": total,
             "avisos": avisos,
         }
+        st.session_state["_docx_uploader_v"] = (
+            st.session_state.get("_docx_uploader_v", 0) + 1
+        )
         st.rerun()
     st.subheader("PDFs de pré-visualização")
     _mostrar_resultado_import_pdf()
