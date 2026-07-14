@@ -5,11 +5,14 @@ from __future__ import annotations
 import re
 import shutil
 import unicodedata
+from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
+from openpyxl.formula.translate import Translator
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -202,6 +205,78 @@ def _mapear_colunas_avaliacao(wb, ws, ws_valores) -> dict[str, int]:
         if nome and nome not in mapa:
             mapa[nome] = col
     return mapa
+
+
+def _contar_colunas_alunos(ws) -> int:
+    """Conta as colunas de aluno existentes (linha 3 com nome/fórmula)."""
+    total = 0
+    col = PRIMEIRA_COLUNA_ALUNO
+    while True:
+        valor = ws.cell(LINHA_NOMES, col).value
+        tem_nome = (isinstance(valor, str) and valor.strip()) or valor not in (None, "")
+        if not tem_nome:
+            break
+        total += 1
+        col += 1
+    return total
+
+
+def _garantir_colunas_alunos(ws, n_alunos: int) -> int:
+    """Garante que a folha Avaliação tem uma coluna por aluno.
+
+    Se a turma tiver mais alunos do que o modelo previa, replica a última
+    coluna de aluno (estilos + fórmulas) para as colunas em falta.
+    Devolve o número de colunas de aluno após a operação.
+    """
+    existentes = _contar_colunas_alunos(ws)
+    if existentes == 0 or n_alunos <= existentes:
+        return existentes
+
+    origem = PRIMEIRA_COLUNA_ALUNO + existentes - 1
+    origem_letra = get_column_letter(origem)
+    novo_max = PRIMEIRA_COLUNA_ALUNO + n_alunos - 1
+
+    bandas: list[tuple[int, int, int]] = []
+    for rng in list(ws.merged_cells.ranges):
+        if rng.max_col == origem and rng.min_col < origem:
+            bandas.append((rng.min_col, rng.min_row, rng.max_row))
+    for min_col, min_row, max_row in bandas:
+        ws.unmerge_cells(
+            start_row=min_row, start_column=min_col, end_row=max_row, end_column=origem
+        )
+        ws.merge_cells(
+            start_row=min_row, start_column=min_col, end_row=max_row, end_column=novo_max
+        )
+
+    for i in range(existentes, n_alunos):
+        destino = PRIMEIRA_COLUNA_ALUNO + i
+        destino_letra = get_column_letter(destino)
+        ws.column_dimensions[destino_letra].width = ws.column_dimensions[
+            origem_letra
+        ].width
+
+        for row in range(1, ws.max_row + 1):
+            dst = ws.cell(row, destino)
+            if isinstance(dst, MergedCell):
+                continue
+            src = ws.cell(row, origem)
+            if src.has_style:
+                dst._style = copy(src._style)
+            valor = src.value
+            if isinstance(valor, str) and valor.startswith("="):
+                dst.value = Translator(
+                    valor, origin=f"{origem_letra}{row}"
+                ).translate_formula(f"{destino_letra}{row}")
+            else:
+                dst.value = None
+
+        aux_row = PRIMEIRA_LINHA_ALUNO_AUXILIAR + i
+        ws.cell(LINHA_NOMES, destino).value = f"=Auxiliar!$B{aux_row}"
+        ws.merge_cells(
+            start_row=LINHA_NOMES, start_column=destino, end_row=13, end_column=destino
+        )
+
+    return n_alunos
 
 
 def _limpar_notas_folha_avaliacao(ws, col_inicio: int, col_fim: int) -> None:
@@ -451,6 +526,8 @@ def sincronizar_acta(
         ws_av_valores = _folha_avaliacao(wb_valores)
         nome_folha_av = ws_av.title
         nome_folha_aux = ws_aux.title
+
+        _garantir_colunas_alunos(ws_av, len(alunos_ordem))
 
         ultima_col = max(
             ws_av.max_column,
