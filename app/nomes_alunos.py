@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from app import db
 from app.config import NOMES_ALUNOS_PATH
 
 if TYPE_CHECKING:
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 
 # Conectores ignorados ao gerar a chave do ficheiro a partir do nome.
 _CONECTORES_NOME = {"de", "da", "do", "das", "dos", "e", "di", "du"}
+
+_KV_NOMES = "nomes_turma"
 
 
 @dataclass
@@ -48,10 +51,7 @@ def gerar_chave_ficheiro(nome: str) -> str:
     return "".join(partes)
 
 
-def carregar_nomes_turma() -> list[AlunoTurma]:
-    if not NOMES_ALUNOS_PATH.exists():
-        return []
-    dados = json.loads(NOMES_ALUNOS_PATH.read_text(encoding="utf-8"))
+def _parse_nomes(dados: list) -> list[AlunoTurma]:
     return [
         AlunoTurma(
             nome=str(item.get("nome", "")).strip(),
@@ -63,8 +63,18 @@ def carregar_nomes_turma() -> list[AlunoTurma]:
     ]
 
 
+def carregar_nomes_turma() -> list[AlunoTurma]:
+    valor = db.kv_get(_KV_NOMES)
+    if valor is not None:
+        return _parse_nomes(json.loads(valor))
+    if NOMES_ALUNOS_PATH.exists():
+        alunos = _parse_nomes(json.loads(NOMES_ALUNOS_PATH.read_text(encoding="utf-8")))
+        guardar_nomes_turma(alunos)
+        return alunos
+    return []
+
+
 def guardar_nomes_turma(alunos: list[AlunoTurma]) -> None:
-    NOMES_ALUNOS_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = [
         {
             "nome": a.nome.strip(),
@@ -74,10 +84,7 @@ def guardar_nomes_turma(alunos: list[AlunoTurma]) -> None:
         for a in alunos
         if a.nome.strip()
     ]
-    NOMES_ALUNOS_PATH.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    db.kv_set(_KV_NOMES, json.dumps(payload, ensure_ascii=False))
 
 
 def tema_para_nome(nome: str) -> str:

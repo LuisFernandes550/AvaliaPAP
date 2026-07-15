@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app import db
 from app.config import EM_STREAMLIT_CLOUD, JURIS_APRESENTACAO_PATH, NOTA_MAXIMA, _ler_config
 from app.models import (
     CRITERIO_LABELS,
@@ -85,10 +86,10 @@ def qrcode_formulario_juri_png(url: str | None = None, *, scale: int = 8) -> byt
     return buffer.getvalue()
 
 
-def carregar_config_juris() -> ConfigJurisApresentacao:
-    if not JURIS_APRESENTACAO_PATH.exists():
-        return ConfigJurisApresentacao()
-    dados = json.loads(JURIS_APRESENTACAO_PATH.read_text(encoding="utf-8"))
+_KV_JURIS = "config_juris"
+
+
+def _config_juris_de_dados(dados: dict) -> ConfigJurisApresentacao:
     juris = [str(j).strip() for j in dados.get("juris", []) if str(j).strip()]
     if len(juris) < NUM_JURIS:
         for i in range(len(juris) + 1, NUM_JURIS + 1):
@@ -101,9 +102,21 @@ def carregar_config_juris() -> ConfigJurisApresentacao:
     )
 
 
+def carregar_config_juris() -> ConfigJurisApresentacao:
+    valor = db.kv_get(_KV_JURIS)
+    if valor is not None:
+        return _config_juris_de_dados(json.loads(valor))
+    if JURIS_APRESENTACAO_PATH.exists():
+        dados = json.loads(JURIS_APRESENTACAO_PATH.read_text(encoding="utf-8"))
+        config = _config_juris_de_dados(dados)
+        guardar_config_juris(config)
+        return config
+    return ConfigJurisApresentacao()
+
+
 def guardar_config_juris(config: ConfigJurisApresentacao) -> None:
-    JURIS_APRESENTACAO_PATH.parent.mkdir(parents=True, exist_ok=True)
-    JURIS_APRESENTACAO_PATH.write_text(
+    db.kv_set(
+        _KV_JURIS,
         json.dumps(
             {
                 "ano_letivo": config.ano_letivo,
@@ -111,9 +124,7 @@ def guardar_config_juris(config: ConfigJurisApresentacao) -> None:
                 "senha_hash": config.senha_hash,
             },
             ensure_ascii=False,
-            indent=2,
         ),
-        encoding="utf-8",
     )
 
 

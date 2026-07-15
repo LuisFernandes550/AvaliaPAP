@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import sqlite3
 import secrets
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Iterator, Optional
+from typing import Optional
 
 import bcrypt
 
-from app.config import ADMIN_NOME, ADMIN_PASSWORD, ADMIN_USERNAME, DB_PATH
+from app import db
+from app.config import ADMIN_NOME, ADMIN_PASSWORD, ADMIN_USERNAME
+from app.db import PK_AUTO, get_conn as _conn
 
 
 @dataclass
@@ -26,35 +25,33 @@ class Utilizador:
 
 
 class AuthStorage:
-    def __init__(self, db_path=DB_PATH) -> None:
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, db_path=None) -> None:
         self._init_db()
         self._bootstrap_admin()
 
-    @contextmanager
-    def _conn(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(str(self.db_path.resolve()))
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+    @staticmethod
+    def _conn():
+        return _conn()
 
     def _init_db(self) -> None:
         with self._conn() as conn:
             conn.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS utilizadores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    id {PK_AUTO},
+                    username TEXT NOT NULL UNIQUE,
                     nome TEXT NOT NULL,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'professor',
                     ativo INTEGER NOT NULL DEFAULT 1,
                     criado_em TEXT NOT NULL
                 )
+                """
+            )
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ix_utilizadores_username_lower
+                ON utilizadores (LOWER(username))
                 """
             )
 
@@ -106,7 +103,11 @@ class AuthStorage:
 
     def _bootstrap_admin(self) -> None:
         with self._conn() as conn:
-            count = conn.execute("SELECT COUNT(*) FROM utilizadores").fetchone()[0]
+            count = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS n FROM utilizadores"
+                ).fetchone()["n"]
+            )
             if count > 0:
                 return
             self._criar_utilizador(
@@ -129,7 +130,7 @@ class AuthStorage:
             return False
 
     @staticmethod
-    def _row_utilizador(row: sqlite3.Row) -> Utilizador:
+    def _row_utilizador(row) -> Utilizador:
         return Utilizador(
             id=int(row["id"]),
             username=row["username"],
@@ -141,7 +142,7 @@ class AuthStorage:
 
     def _criar_utilizador(
         self,
-        conn: sqlite3.Connection,
+        conn,
         username: str,
         password: str,
         nome: str,
@@ -152,6 +153,7 @@ class AuthStorage:
             """
             INSERT INTO utilizadores (username, nome, password_hash, role, ativo, criado_em)
             VALUES (?, ?, ?, ?, 1, ?)
+            RETURNING id
             """,
             (
                 username.strip(),
@@ -161,7 +163,7 @@ class AuthStorage:
                 agora,
             ),
         )
-        return int(cursor.lastrowid)
+        return int(cursor.fetchone()["id"])
 
     def autenticar(self, username: str, password: str) -> Optional[Utilizador]:
         if not username.strip() or not password:
@@ -170,7 +172,7 @@ class AuthStorage:
             row = conn.execute(
                 """
                 SELECT * FROM utilizadores
-                WHERE username = ? COLLATE NOCASE AND ativo = 1
+                WHERE LOWER(username) = LOWER(?) AND ativo = 1
                 """,
                 (username.strip(),),
             ).fetchone()
@@ -192,13 +194,13 @@ class AuthStorage:
                     "SELECT * FROM utilizadores WHERE id = ?", (user_id,)
                 ).fetchone()
             return self._row_utilizador(row)
-        except sqlite3.IntegrityError as exc:
+        except db.INTEGRITY_ERRORS as exc:
             raise ValueError("Já existe um utilizador com esse nome.") from exc
 
     def listar_utilizadores(self) -> list[Utilizador]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM utilizadores ORDER BY username COLLATE NOCASE"
+                "SELECT * FROM utilizadores ORDER BY LOWER(username)"
             ).fetchall()
         return [self._row_utilizador(r) for r in rows]
 
