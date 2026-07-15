@@ -1427,6 +1427,23 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
     if msg:
         st.success(msg)
 
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stCheckbox"] { display: flex; justify-content: center; }
+        div[data-testid="stCheckbox"] label span:first-child {
+            background-color: #ef4444 !important;
+            border-color: #ef4444 !important;
+        }
+        div[data-testid="stCheckbox"] label:has(input:checked) span:first-child {
+            background-color: #16a34a !important;
+            border-color: #16a34a !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     estado = storage.obter_materiais_drive()
 
     cab = st.columns(_RATIOS_MATERIAIS, vertical_alignment="center")
