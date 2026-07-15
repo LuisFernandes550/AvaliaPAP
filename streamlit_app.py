@@ -1429,22 +1429,24 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
         mat = estado.get(aluno.id, {})
         linha = {"_aluno_id": aluno.id, "Aluno": aluno.nome}
         for chave, label, _ in _MATERIAIS_DRIVE:
-            linha[label] = bool(mat.get(chave, False))
+            linha[label] = bool(mat.get(chave, True))
         linhas.append(linha)
 
     df = pd.DataFrame(linhas)
     col_cfg: dict = {"Aluno": st.column_config.TextColumn("Aluno", disabled=True)}
     for _chave, label, ajuda in _MATERIAIS_DRIVE:
         col_cfg[label] = st.column_config.CheckboxColumn(
-            label, help=ajuda or None, default=False
+            label, help=ajuda or None, default=True
         )
 
+    altura_tabela = (len(alunos) + 1) * 35 + 3
     editado = st.data_editor(
         df,
         column_config=col_cfg,
         column_order=["Aluno"] + [label for _, label, _ in _MATERIAIS_DRIVE],
         hide_index=True,
         use_container_width=True,
+        height=altura_tabela,
         key="editor_materiais_drive",
     )
 
@@ -1455,7 +1457,7 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
             aluno_id = int(row["_aluno_id"])
             for chave, label, _ in _MATERIAIS_DRIVE:
                 novo = bool(row[label])
-                antigo = bool(atual.get(aluno_id, {}).get(chave, False))
+                antigo = bool(atual.get(aluno_id, {}).get(chave, True))
                 if novo != antigo:
                     storage.definir_material_drive(aluno_id, chave, novo)
                     alteracoes += 1
