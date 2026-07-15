@@ -301,6 +301,7 @@ _SUBTITULOS_PAGINA = {
     "Resumo": "Resumo da turma",
     "Relatórios": "Relatórios",
     "Apresentações": "Apresentações — Defesa da PAP",
+    "Materiais Drive": "Materiais Drive — entregas por aluno",
     "Definições": "Definições",
 }
 
@@ -1397,6 +1398,73 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                     "texto": f"Notas de apresentação de {aluno.nome} removidas.",
                 }
                 st.rerun()
+
+
+_MATERIAIS_DRIVE: list[tuple[str, str, str]] = [
+    ("apresentacao", "Apresentação", ""),
+    ("pre_projeto", "Pré-Projeto", ""),
+    ("relatorio", "Relatório", ""),
+    ("projeto", "Projeto", ""),
+    ("build_apk", "Build/APK", "Build (Jogos) ou APK (Aplicações Móveis)"),
+    ("fotos_videos", "Fotos/Vídeos", ""),
+]
+
+
+def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
+    st.caption(
+        "Marque os materiais que cada aluno já entregou na Drive. "
+        "As alterações só são gravadas ao clicar em **Guardar**."
+    )
+    if not alunos:
+        st.info("Importe alunos na barra lateral para preencher a tabela.")
+        return
+
+    msg = st.session_state.pop("_materiais_msg", None)
+    if msg:
+        st.success(msg)
+
+    estado = storage.obter_materiais_drive()
+    linhas = []
+    for aluno in alunos:
+        mat = estado.get(aluno.id, {})
+        linha = {"_aluno_id": aluno.id, "Aluno": aluno.nome}
+        for chave, label, _ in _MATERIAIS_DRIVE:
+            linha[label] = bool(mat.get(chave, False))
+        linhas.append(linha)
+
+    df = pd.DataFrame(linhas)
+    col_cfg: dict = {"Aluno": st.column_config.TextColumn("Aluno", disabled=True)}
+    for _chave, label, ajuda in _MATERIAIS_DRIVE:
+        col_cfg[label] = st.column_config.CheckboxColumn(
+            label, help=ajuda or None, default=False
+        )
+
+    editado = st.data_editor(
+        df,
+        column_config=col_cfg,
+        column_order=["Aluno"] + [label for _, label, _ in _MATERIAIS_DRIVE],
+        hide_index=True,
+        use_container_width=True,
+        key="editor_materiais_drive",
+    )
+
+    if st.button("Guardar", type="primary", key="guardar_materiais_drive"):
+        atual = storage.obter_materiais_drive()
+        alteracoes = 0
+        for _, row in pd.DataFrame(editado).iterrows():
+            aluno_id = int(row["_aluno_id"])
+            for chave, label, _ in _MATERIAIS_DRIVE:
+                novo = bool(row[label])
+                antigo = bool(atual.get(aluno_id, {}).get(chave, False))
+                if novo != antigo:
+                    storage.definir_material_drive(aluno_id, chave, novo)
+                    alteracoes += 1
+        st.session_state["_materiais_msg"] = (
+            f"✓ {alteracoes} alteração(ões) guardada(s)."
+            if alteracoes
+            else "Sem alterações para guardar."
+        )
+        st.rerun()
 
 
 def _pagina_config_juris(sessao: dict) -> None:
@@ -2719,7 +2787,7 @@ _renderizar_titulo_plataforma()
 
 pagina = st.radio(
     "Nav",
-    ["Resumo", "Relatórios", "Apresentações", "Definições"],
+    ["Resumo", "Relatórios", "Apresentações", "Materiais Drive", "Definições"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -2804,6 +2872,8 @@ elif pagina == "Resumo":
     _pagina_resumo(alunos)
 elif pagina == "Apresentações":
     _pagina_apresentacoes(alunos)
+elif pagina == "Materiais Drive":
+    _pagina_materiais_drive(alunos)
 elif not alunos:
     st.info("Importe relatórios .docx na barra lateral.")
 else:

@@ -96,6 +96,17 @@ class PapStorage:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS materiais_drive (
+                    aluno_id INTEGER NOT NULL,
+                    material TEXT NOT NULL,
+                    entregue INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (aluno_id, material),
+                    FOREIGN KEY (aluno_id) REFERENCES alunos(id)
+                )
+                """
+            )
 
     def guardar_aluno(self, aluno: AlunoRelatorio) -> int:
         with self._conn() as conn:
@@ -179,7 +190,31 @@ class PapStorage:
             conn.execute("DELETE FROM avaliacoes WHERE aluno_id = ?", (aluno_id,))
             conn.execute("DELETE FROM avaliacoes_juri WHERE aluno_id = ?", (aluno_id,))
             conn.execute("DELETE FROM resumos_capitulos WHERE aluno_id = ?", (aluno_id,))
+            conn.execute("DELETE FROM materiais_drive WHERE aluno_id = ?", (aluno_id,))
             conn.execute("DELETE FROM alunos WHERE id = ?", (aluno_id,))
+
+    def obter_materiais_drive(self) -> dict[int, dict[str, bool]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT aluno_id, material, entregue FROM materiais_drive"
+            ).fetchall()
+        resultado: dict[int, dict[str, bool]] = {}
+        for r in rows:
+            resultado.setdefault(r["aluno_id"], {})[r["material"]] = bool(r["entregue"])
+        return resultado
+
+    def definir_material_drive(
+        self, aluno_id: int, material: str, entregue: bool
+    ) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO materiais_drive (aluno_id, material, entregue)
+                VALUES (?, ?, ?)
+                ON CONFLICT(aluno_id, material) DO UPDATE SET entregue = excluded.entregue
+                """,
+                (aluno_id, material, 1 if entregue else 0),
+            )
 
     def guardar_resumos_capitulos(self, aluno_id: int, resumos: dict[str, str]) -> None:
         with self._conn() as conn:
