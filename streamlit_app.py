@@ -1430,7 +1430,12 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
     st.markdown(
         """
         <style>
-        div[data-testid="stCheckbox"] { display: flex; justify-content: center; }
+        div[data-testid="stCheckbox"] {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+        }
+        div[data-testid="stCheckbox"] > label { margin: 0 auto !important; }
         div[data-testid="stCheckbox"] label span:first-child {
             background-color: #ef4444 !important;
             border-color: #ef4444 !important;
