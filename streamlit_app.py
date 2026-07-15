@@ -1416,38 +1416,26 @@ _RATIOS_MATERIAIS = [3.2] + [1.1] * len(_MATERIAIS_DRIVE)
 
 def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
     st.caption(
-        "Marque os materiais que cada aluno já entregou na Drive. "
-        "As alterações só são gravadas ao clicar em **Guardar**."
+        "Clique em cada célula para alternar entre entregue e em falta. "
+        "As alterações são gravadas automaticamente."
     )
     if not alunos:
         st.info("Importe alunos na barra lateral para preencher a tabela.")
         return
 
-    msg = st.session_state.pop("_materiais_msg", None)
-    if msg:
-        st.success(msg)
-
     st.markdown(
         """
         <style>
-        div[data-testid="stCheckbox"] {
-            width: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
+        section[data-testid="stMain"] div[data-testid="stButton"] > button {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            font-size: 1.35rem !important;
+            line-height: 1 !important;
+            min-height: 0 !important;
         }
-        div[data-testid="stCheckbox"] > label {
-            display: flex !important;
-            justify-content: center !important;
-            width: 100% !important;
-            margin: 0 !important;
-        }
-        div[data-testid="stCheckbox"] label span {
-            background-color: #16a34a !important;
-            border-color: #16a34a !important;
-        }
-        div[data-testid="stCheckbox"] input:checked + div span {
-            background-color: #16a34a !important;
-            border-color: #16a34a !important;
+        section[data-testid="stMain"] div[data-testid="stButton"] > button:hover {
+            background: rgba(0,0,0,0.05) !important;
         }
         </style>
         """,
@@ -1481,32 +1469,16 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
                     unsafe_allow_html=True,
                 )
                 continue
-            linha[i + 1].checkbox(
-                f"{aluno.nome} — {label}",
-                value=bool(mat.get(chave, True)),
+            entregue = bool(mat.get(chave, True))
+            icone = "🟢" if entregue else "🔴"
+            if linha[i + 1].button(
+                icone,
                 key=f"mat_{aluno.id}_{chave}",
-                label_visibility="collapsed",
-            )
-
-    st.divider()
-    if st.button("Guardar", type="primary", key="guardar_materiais_drive"):
-        atual = storage.obter_materiais_drive()
-        alteracoes = 0
-        for aluno in alunos:
-            for chave, _label, _ajuda, _cor in _MATERIAIS_DRIVE:
-                if chave == "build_apk" and aluno.area_pap not in _AREAS_COM_BUILD:
-                    continue
-                novo = bool(st.session_state.get(f"mat_{aluno.id}_{chave}", True))
-                antigo = bool(atual.get(aluno.id, {}).get(chave, True))
-                if novo != antigo:
-                    storage.definir_material_drive(aluno.id, chave, novo)
-                    alteracoes += 1
-        st.session_state["_materiais_msg"] = (
-            f"✓ {alteracoes} alteração(ões) guardada(s)."
-            if alteracoes
-            else "Sem alterações para guardar."
-        )
-        st.rerun()
+                use_container_width=True,
+                help=f"{label} — {'entregue' if entregue else 'em falta'} (clique para alternar)",
+            ):
+                storage.definir_material_drive(aluno.id, chave, not entregue)
+                st.rerun()
 
 
 def _pagina_config_juris(sessao: dict) -> None:
