@@ -1541,6 +1541,7 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
                 help=f"{label} — {'entregue' if entregue else 'em falta'} (clique para alternar)",
             ):
                 storage.definir_material_drive(aluno.id, chave, not entregue)
+                _invalidar_cache_backup()
                 st.rerun()
 
 
