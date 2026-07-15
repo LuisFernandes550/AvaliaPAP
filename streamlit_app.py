@@ -1435,10 +1435,17 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
             display: flex !important;
             justify-content: center !important;
         }
-        div[data-testid="stCheckbox"] > label { margin: 0 auto !important; }
-        div[data-testid="stCheckbox"] label > span:first-child,
-        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] > div,
-        div[data-testid="stCheckbox"] label > div:first-child {
+        div[data-testid="stCheckbox"] > label {
+            display: flex !important;
+            justify-content: center !important;
+            width: 100% !important;
+            margin: 0 !important;
+        }
+        div[data-testid="stCheckbox"] label span {
+            background-color: #16a34a !important;
+            border-color: #16a34a !important;
+        }
+        div[data-testid="stCheckbox"] input:checked + div span {
             background-color: #16a34a !important;
             border-color: #16a34a !important;
         }
