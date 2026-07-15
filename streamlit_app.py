@@ -1414,6 +1414,54 @@ _AREAS_COM_BUILD = {AreaPAP.JOGO, AreaPAP.APLICACAO_MOVEL}
 _RATIOS_MATERIAIS = [3.2] + [1.1] * len(_MATERIAIS_DRIVE)
 
 
+def _gerar_pdf_materiais(
+    alunos: list[AlunoRelatorio], estado: dict[int, dict[str, bool]]
+) -> bytes:
+    from fpdf import FPDF
+
+    pdf = FPDF(orientation="L", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 9, "Materiais na Drive", ln=1)
+    pdf.ln(1)
+
+    usavel = pdf.w - pdf.l_margin - pdf.r_margin
+    largura_nome = 78.0
+    largura_col = (usavel - largura_nome) / len(_MATERIAIS_DRIVE)
+
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.cell(largura_nome, 8, "Aluno", border=1, fill=True)
+    for _chave, label, _ajuda, _cor in _MATERIAIS_DRIVE:
+        pdf.cell(largura_col, 8, label, border=1, align="C", fill=True)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 8)
+    for aluno in alunos:
+        mat = estado.get(aluno.id, {})
+        nome = aluno.nome
+        while nome and pdf.get_string_width(nome) > largura_nome - 3:
+            nome = nome[:-1]
+        pdf.cell(largura_nome, 7, nome, border=1)
+        for chave, _label, _ajuda, _cor in _MATERIAIS_DRIVE:
+            if chave == "build_apk" and aluno.area_pap not in _AREAS_COM_BUILD:
+                pdf.set_fill_color(235, 238, 242)
+                pdf.cell(largura_col, 7, "-", border=1, align="C", fill=True)
+                continue
+            entregue = bool(mat.get(chave, True))
+            if entregue:
+                pdf.set_fill_color(198, 239, 206)
+                texto = "Sim"
+            else:
+                pdf.set_fill_color(255, 199, 206)
+                texto = "Nao"
+            pdf.cell(largura_col, 7, texto, border=1, align="C", fill=True)
+        pdf.ln()
+
+    return bytes(pdf.output())
+
+
 def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
     st.caption(
         "Clique em cada célula para alternar entre entregue e em falta. "
@@ -1426,7 +1474,7 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
     st.markdown(
         """
         <style>
-        section[data-testid="stMain"] div[data-testid="stButton"] > button {
+        section[data-testid="stMain"] [class*="st-key-mat_"] button {
             border: none !important;
             background: transparent !important;
             padding: 0 !important;
@@ -1434,7 +1482,7 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
             line-height: 1 !important;
             min-height: 0 !important;
         }
-        section[data-testid="stMain"] div[data-testid="stButton"] > button:hover {
+        section[data-testid="stMain"] [class*="st-key-mat_"] button:hover {
             background: rgba(0,0,0,0.05) !important;
         }
         </style>
@@ -1443,6 +1491,21 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
     )
 
     estado = storage.obter_materiais_drive()
+
+    col_pdf, _ = st.columns([1, 3])
+    with col_pdf:
+        if st.button("Gerar PDF", key="gerar_pdf_materiais", use_container_width=True):
+            st.session_state["_materiais_pdf"] = _gerar_pdf_materiais(alunos, estado)
+        pdf_bytes = st.session_state.get("_materiais_pdf")
+        if pdf_bytes:
+            st.download_button(
+                "Descarregar PDF",
+                data=pdf_bytes,
+                file_name="materiais_drive.pdf",
+                mime="application/pdf",
+                key="download_pdf_materiais",
+                use_container_width=True,
+            )
 
     cab = st.columns(_RATIOS_MATERIAIS, vertical_alignment="center")
     cab[0].markdown("**Aluno**")
