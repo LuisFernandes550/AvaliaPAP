@@ -1400,14 +1400,18 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                 st.rerun()
 
 
-_MATERIAIS_DRIVE: list[tuple[str, str, str]] = [
-    ("apresentacao", "Apresentação", ""),
-    ("pre_projeto", "Pré-Projeto", ""),
-    ("relatorio", "Relatório", ""),
-    ("projeto", "Projeto", ""),
-    ("build_apk", "Build/APK", "Build (Jogos) ou APK (Aplicações Móveis)"),
-    ("fotos_videos", "Fotos/Vídeos", ""),
+# (chave, rótulo, ajuda, cor de fundo do cabeçalho)
+_MATERIAIS_DRIVE: list[tuple[str, str, str, str]] = [
+    ("apresentacao", "Apresentação", "", "#6366f1"),
+    ("pre_projeto", "Pré-Projeto", "", "#0ea5e9"),
+    ("relatorio", "Relatório", "", "#10b981"),
+    ("projeto", "Projeto", "", "#f59e0b"),
+    ("build_apk", "Build/APK", "Build (Jogos) ou APK (Aplicações Móveis)", "#ef4444"),
+    ("fotos_videos", "Fotos/Vídeos", "", "#a855f7"),
 ]
+
+_AREAS_COM_BUILD = {AreaPAP.JOGO, AreaPAP.APLICACAO_MOVEL}
+_RATIOS_MATERIAIS = [3.2] + [1.1] * len(_MATERIAIS_DRIVE)
 
 
 def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
@@ -1424,42 +1428,51 @@ def _pagina_materiais_drive(alunos: list[AlunoRelatorio]) -> None:
         st.success(msg)
 
     estado = storage.obter_materiais_drive()
-    linhas = []
-    for aluno in alunos:
-        mat = estado.get(aluno.id, {})
-        linha = {"_aluno_id": aluno.id, "Aluno": aluno.nome}
-        for chave, label, _ in _MATERIAIS_DRIVE:
-            linha[label] = bool(mat.get(chave, True))
-        linhas.append(linha)
 
-    df = pd.DataFrame(linhas)
-    col_cfg: dict = {"Aluno": st.column_config.TextColumn("Aluno", disabled=True)}
-    for _chave, label, ajuda in _MATERIAIS_DRIVE:
-        col_cfg[label] = st.column_config.CheckboxColumn(
-            label, help=ajuda or None, default=True
+    cab = st.columns(_RATIOS_MATERIAIS, vertical_alignment="center")
+    cab[0].markdown("**Aluno**")
+    for i, (_chave, label, ajuda, cor) in enumerate(_MATERIAIS_DRIVE):
+        titulo = f"{label} 🛈" if ajuda else label
+        cab[i + 1].markdown(
+            f"<div title='{ajuda}' style='background:{cor};color:#fff;"
+            "padding:4px 6px;border-radius:6px;text-align:center;font-size:0.78rem;"
+            f"font-weight:600;line-height:1.2'>{titulo}</div>",
+            unsafe_allow_html=True,
         )
 
-    altura_tabela = (len(alunos) + 1) * 35 + 3
-    editado = st.data_editor(
-        df,
-        column_config=col_cfg,
-        column_order=["Aluno"] + [label for _, label, _ in _MATERIAIS_DRIVE],
-        hide_index=True,
-        use_container_width=True,
-        height=altura_tabela,
-        key="editor_materiais_drive",
-    )
+    for aluno in alunos:
+        mat = estado.get(aluno.id, {})
+        linha = st.columns(_RATIOS_MATERIAIS, vertical_alignment="center")
+        linha[0].markdown(
+            f"<div style='font-size:0.85rem;padding-top:4px'>{aluno.nome}</div>",
+            unsafe_allow_html=True,
+        )
+        for i, (chave, label, _ajuda, _cor) in enumerate(_MATERIAIS_DRIVE):
+            if chave == "build_apk" and aluno.area_pap not in _AREAS_COM_BUILD:
+                linha[i + 1].markdown(
+                    "<div style='text-align:center;color:#cbd5e1;padding-top:4px'>—</div>",
+                    unsafe_allow_html=True,
+                )
+                continue
+            linha[i + 1].checkbox(
+                f"{aluno.nome} — {label}",
+                value=bool(mat.get(chave, True)),
+                key=f"mat_{aluno.id}_{chave}",
+                label_visibility="collapsed",
+            )
 
+    st.divider()
     if st.button("Guardar", type="primary", key="guardar_materiais_drive"):
         atual = storage.obter_materiais_drive()
         alteracoes = 0
-        for _, row in pd.DataFrame(editado).iterrows():
-            aluno_id = int(row["_aluno_id"])
-            for chave, label, _ in _MATERIAIS_DRIVE:
-                novo = bool(row[label])
-                antigo = bool(atual.get(aluno_id, {}).get(chave, True))
+        for aluno in alunos:
+            for chave, _label, _ajuda, _cor in _MATERIAIS_DRIVE:
+                if chave == "build_apk" and aluno.area_pap not in _AREAS_COM_BUILD:
+                    continue
+                novo = bool(st.session_state.get(f"mat_{aluno.id}_{chave}", True))
+                antigo = bool(atual.get(aluno.id, {}).get(chave, True))
                 if novo != antigo:
-                    storage.definir_material_drive(aluno_id, chave, novo)
+                    storage.definir_material_drive(aluno.id, chave, novo)
                     alteracoes += 1
         st.session_state["_materiais_msg"] = (
             f"✓ {alteracoes} alteração(ões) guardada(s)."
