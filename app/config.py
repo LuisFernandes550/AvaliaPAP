@@ -68,9 +68,6 @@ JURIS_APRESENTACAO_PATH = CONFIG_DIR / "juris_apresentacao.json"
 ACTA_MODELO_PATH = BASE_DIR / "assets" / "Acta_Pap2526.xlsx"
 ACTA_PATH = EXPORT_DIR / "Acta_Pap2526.xlsx"
 
-# Base de dados persistente (Supabase/Postgres). Se vazio, usa SQLite local.
-DATABASE_URL = _ler_config("DATABASE_URL")
-
 for pasta in (DATA_DIR, RELATORIOS_DIR, PDF_DIR, CONFIG_DIR, EXPORT_DIR):
     pasta.mkdir(parents=True, exist_ok=True)
 

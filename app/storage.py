@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Iterator, Optional
 
-from app import db
-from app.config import INSTRUCOES_PATH
-from app.db import PK_AUTO, get_conn as _conn
+from app.config import DB_PATH, INSTRUCOES_PATH
 from app.models import (
     AlunoRelatorio,
     AreaPAP,
@@ -17,35 +18,42 @@ from app.models import (
 
 
 class PapStorage:
-    """Armazenamento persistente (Postgres/Supabase ou SQLite local)."""
+    """Armazenamento local em SQLite — funciona em qualquer pasta (ex.: Google Drive)."""
 
-    def __init__(self, db_path=None) -> None:
+    def __init__(self, db_path=DB_PATH) -> None:
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
-    @staticmethod
-    def _conn():
-        return _conn()
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
+        conn = sqlite3.connect(str(self.db_path.resolve()))
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         with self._conn() as conn:
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS alunos (
-                    id {PK_AUTO},
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nome TEXT NOT NULL,
                     titulo_pap TEXT NOT NULL,
                     area_pap TEXT NOT NULL,
                     ficheiro TEXT NOT NULL UNIQUE,
                     texto_extraido TEXT,
-                    importado_em TEXT NOT NULL,
-                    tema_pap TEXT NOT NULL DEFAULT ''
+                    importado_em TEXT NOT NULL
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS avaliacoes (
-                    id {PK_AUTO},
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     aluno_id INTEGER NOT NULL,
                     criterio TEXT NOT NULL,
                     nota INTEGER NOT NULL,
@@ -58,9 +66,9 @@ class PapStorage:
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS resumos_capitulos (
-                    id {PK_AUTO},
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     aluno_id INTEGER NOT NULL,
                     capitulo TEXT NOT NULL,
                     resumo TEXT,
@@ -69,16 +77,13 @@ class PapStorage:
                 )
                 """
             )
-            if not db.IS_POSTGRES:
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(alunos)")}
-                if "tema_pap" not in cols:
-                    conn.execute(
-                        "ALTER TABLE alunos ADD COLUMN tema_pap TEXT NOT NULL DEFAULT ''"
-                    )
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(alunos)")}
+            if "tema_pap" not in cols:
+                conn.execute("ALTER TABLE alunos ADD COLUMN tema_pap TEXT NOT NULL DEFAULT ''")
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS avaliacoes_juri (
-                    id {PK_AUTO},
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     aluno_id INTEGER NOT NULL,
                     juri_nome TEXT NOT NULL,
                     email_juri TEXT,
@@ -115,7 +120,6 @@ class PapStorage:
                     area_pap = excluded.area_pap,
                     texto_extraido = excluded.texto_extraido,
                     importado_em = excluded.importado_em
-                RETURNING id
                 """,
                 (
                     aluno.nome,
@@ -127,9 +131,8 @@ class PapStorage:
                     aluno.importado_em.isoformat(),
                 ),
             )
-            row = cursor.fetchone()
-            if row is not None:
-                return int(row["id"])
+            if cursor.lastrowid:
+                return int(cursor.lastrowid)
             row = conn.execute(
                 "SELECT id FROM alunos WHERE ficheiro = ?", (aluno.ficheiro,)
             ).fetchone()
@@ -138,7 +141,7 @@ class PapStorage:
     def listar_alunos(self) -> list[AlunoRelatorio]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM alunos ORDER BY LOWER(nome)"
+                "SELECT * FROM alunos ORDER BY nome COLLATE NOCASE"
             ).fetchall()
         return [self._row_aluno(r) for r in rows]
 
@@ -401,7 +404,7 @@ class PapStorage:
             return cursor.rowcount
 
     @staticmethod
-    def _row_aluno(row) -> AlunoRelatorio:
+    def _row_aluno(row: sqlite3.Row) -> AlunoRelatorio:
         return AlunoRelatorio(
             id=row["id"],
             nome=row["nome"],
@@ -414,26 +417,18 @@ class PapStorage:
         )
 
 
-_KV_INSTRUCOES = "instrucoes"
-
-
 def carregar_instrucoes() -> InstrucoesAvaliacao:
-    valor = db.kv_get(_KV_INSTRUCOES)
-    if valor is not None:
-        return InstrucoesAvaliacao.model_validate(json.loads(valor))
-    # Migração automática do ficheiro JSON legado (SQLite/local).
     if INSTRUCOES_PATH.exists():
         dados = json.loads(INSTRUCOES_PATH.read_text(encoding="utf-8"))
-        instrucoes = InstrucoesAvaliacao.model_validate(dados)
-        guardar_instrucoes(instrucoes)
-        return instrucoes
+        return InstrucoesAvaliacao.model_validate(dados)
     return InstrucoesAvaliacao()
 
 
 def guardar_instrucoes(instrucoes: InstrucoesAvaliacao) -> None:
-    db.kv_set(
-        _KV_INSTRUCOES,
-        json.dumps(instrucoes.model_dump(), ensure_ascii=False),
+    INSTRUCOES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    INSTRUCOES_PATH.write_text(
+        json.dumps(instrucoes.model_dump(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
 
 
