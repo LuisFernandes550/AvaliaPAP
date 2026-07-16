@@ -1218,66 +1218,51 @@ def _tabela_apresentacoes_editavel(
     return pd.DataFrame(linhas)
 
 
-def _aplicar_edicao_juri_tabela(
-    aluno: AlunoRelatorio,
-    config: ConfigJurisApresentacao,
-    df: pd.DataFrame,
-    avaliacoes_juri: list,
-) -> int:
-    alterados = 0
-    for _, linha in df.iterrows():
-        rotulo = linha.get("Parâmetro", "")
-        chave = ROTULO_PARA_CHAVE.get(rotulo)
-        if not chave:
+def _guardar_edicao_juri(aluno_id: int) -> None:
+    """Grava apenas as células editadas deste aluno (callback do data_editor).
+
+    Corre antes do rerun, guarda cada nota alterada e limpa o estado do editor
+    para não reprocessar nem acumular edições (evita perder notas seguintes).
+    """
+    st.session_state["_apres_expandido"] = aluno_id
+    editor_key = f"editor_juri_{aluno_id}"
+    estado = st.session_state.get(editor_key) or {}
+    editadas = estado.get("edited_rows") or {}
+    if not editadas:
+        return
+
+    config = carregar_config_juris()
+    juris_validos = set(config.juris)
+    houve_alteracao = False
+    for idx_linha, alteracoes in editadas.items():
+        try:
+            criterio = CRITERIOS_FORM_APRESENTACAO[int(idx_linha)][0]
+        except (IndexError, ValueError, TypeError):
             continue
-        for juri in config.juris:
-            novo = linha.get(juri)
-            if novo is None or (isinstance(novo, float) and pd.isna(novo)):
-                existia = any(
-                    a.aluno_id == aluno.id
-                    and a.juri_nome == juri
-                    and a.criterio == chave
-                    for a in avaliacoes_juri
-                )
-                if existia:
-                    storage.remover_avaliacao_juri(
-                        aluno.id, juri, chave, config.ano_letivo
-                    )
-                    alterados += 1
+        for juri, valor in alteracoes.items():
+            if juri not in juris_validos:
+                continue
+            if valor is None or valor == "":
+                storage.remover_avaliacao_juri(aluno_id, juri, criterio, config.ano_letivo)
+                houve_alteracao = True
                 continue
             try:
-                nota_nova = int(round(float(novo)))
+                nota = int(round(float(valor)))
             except (TypeError, ValueError):
                 continue
-            if not NOTA_MINIMA_FORM <= nota_nova <= NOTA_MAXIMA_FORM:
-                continue
-            atual = next(
-                (
-                    a.nota
-                    for a in avaliacoes_juri
-                    if a.aluno_id == aluno.id
-                    and a.juri_nome == juri
-                    and a.criterio == chave
-                ),
-                None,
-            )
-            if atual == nota_nova:
+            if not NOTA_MINIMA_FORM <= nota <= NOTA_MAXIMA_FORM:
                 continue
             storage.guardar_avaliacao_juri(
-                aluno.id,
-                juri,
-                chave,
-                nota_nova,
-                config.ano_letivo,
+                aluno_id, juri, criterio, nota, config.ano_letivo,
                 email_juri="edição manual",
             )
-            alterados += 1
-    return alterados
+            houve_alteracao = True
 
-
-def _marcar_apresentacao_aberta(aluno_id: int) -> None:
-    """Mantém o expander do aluno editado aberto após a gravação automática."""
-    st.session_state["_apres_expandido"] = aluno_id
+    if houve_alteracao:
+        st.session_state.pop("_acta_bytes", None)
+    # Limpar as edições já aplicadas — o editor recarrega da BD no próximo render.
+    if editor_key in st.session_state:
+        st.session_state[editor_key]["edited_rows"] = {}
 
 
 def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
@@ -1359,7 +1344,7 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
         aberto = st.session_state.get("_apres_expandido") == aluno.id
         with st.expander(rotulo, expanded=aberto):
             df = _tabela_apresentacoes_editavel(aluno, config, avaliacoes_juri)
-            editado = st.data_editor(
+            st.data_editor(
                 df,
                 column_config={
                     "Parâmetro": st.column_config.TextColumn(disabled=True),
@@ -1371,13 +1356,9 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                 hide_index=True,
                 use_container_width=True,
                 key=f"editor_juri_{aluno.id}",
-                on_change=_marcar_apresentacao_aberta,
+                on_change=_guardar_edicao_juri,
                 args=(aluno.id,),
             )
-            if _aplicar_edicao_juri_tabela(
-                aluno, config, pd.DataFrame(editado), avaliacoes_juri
-            ):
-                st.session_state.pop("_acta_bytes", None)
             st.caption("As alterações são gravadas automaticamente.")
             if st.button(
                 "Limpar notas deste aluno",
