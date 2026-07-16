@@ -136,6 +136,20 @@ def verificar_senha_formulario(config: ConfigJurisApresentacao, senha: str) -> b
         return False
 
 
+def token_acesso_formulario(config: ConfigJurisApresentacao) -> str:
+    """Token estável derivado do hash, para manter a sessão do formulário.
+
+    Guardado no URL (query param) para o acesso persistir mesmo que a app
+    reinicie ou a ligação se perca. Muda automaticamente se a palavra-passe
+    for alterada, invalidando acessos antigos.
+    """
+    if not config.senha_hash:
+        return ""
+    import hashlib
+
+    return hashlib.sha256(config.senha_hash.encode("utf-8")).hexdigest()[:24]
+
+
 def label_criterio_form(chave: str) -> str:
     return _LABELS_FORM.get(chave, chave)
 

@@ -10,17 +10,32 @@ from app.apresentacoes import (
     NOTA_MAXIMA_FORM,
     NOTA_MINIMA_FORM,
     carregar_config_juris,
+    token_acesso_formulario,
     verificar_senha_formulario,
 )
 
 _SESSAO_ACESSO_OK = "_juri_acesso_ok"
+_QP_ACESSO = "acesso"
 
 
 def _portao_palavra_passe(config) -> bool:
-    """Pede a palavra-passe de acesso. Devolve True se o acesso está autorizado."""
+    """Pede a palavra-passe de acesso. Devolve True se o acesso está autorizado.
+
+    O acesso fica guardado no URL (query param) para não voltar a pedir a
+    palavra-passe quando a app reinicia ou a ligação se perde — o avaliador só
+    a introduz uma vez.
+    """
     if not config.protegido:
         return True
+
+    token = token_acesso_formulario(config)
+
     if st.session_state.get(_SESSAO_ACESSO_OK):
+        return True
+
+    # Acesso já autorizado neste browser (token presente no URL).
+    if token and st.query_params.get(_QP_ACESSO) == token:
+        st.session_state[_SESSAO_ACESSO_OK] = True
         return True
 
     _estilos_letra_maior()
@@ -34,6 +49,8 @@ def _portao_palavra_passe(config) -> bool:
     if entrar:
         if verificar_senha_formulario(config, senha):
             st.session_state[_SESSAO_ACESSO_OK] = True
+            if token:
+                st.query_params[_QP_ACESSO] = token
             st.rerun()
         else:
             st.error("Palavra-passe incorrecta.")
