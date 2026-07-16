@@ -1298,7 +1298,10 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
 
     msg_juri = st.session_state.pop("_apresentacoes_msg", None)
     if msg_juri:
-        getattr(st, msg_juri.get("tipo", "success"))(msg_juri["texto"])
+        if msg_juri.get("toast"):
+            st.toast(msg_juri["texto"], icon="✅")
+        else:
+            getattr(st, msg_juri.get("tipo", "success"))(msg_juri["texto"])
 
     col_link, col_qr, col_ref, col_sync = st.columns([2.6, 1, 1, 1])
     url_form = url_formulario_juri()
@@ -1366,23 +1369,18 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                 use_container_width=True,
                 key=f"editor_juri_{aluno.id}",
             )
-            c1, c2 = st.columns(2)
-            if c1.button("Guardar alterações", key=f"save_juri_{aluno.id}", type="primary"):
-                n = _aplicar_edicao_juri_tabela(
-                    aluno, config, pd.DataFrame(editado), avaliacoes_juri
-                )
-                if n:
-                    st.session_state["_apresentacoes_msg"] = {
-                        "tipo": "success",
-                        "texto": f"✓ {aluno.nome}: {n} nota(s) atualizada(s).",
-                    }
-                else:
-                    st.session_state["_apresentacoes_msg"] = {
-                        "tipo": "info",
-                        "texto": f"{aluno.nome}: sem alterações para guardar.",
-                    }
+            n = _aplicar_edicao_juri_tabela(
+                aluno, config, pd.DataFrame(editado), avaliacoes_juri
+            )
+            if n:
+                st.session_state.pop("_acta_bytes", None)
+                st.session_state["_apresentacoes_msg"] = {
+                    "texto": f"{aluno.nome}: {n} nota(s) guardada(s).",
+                    "toast": True,
+                }
                 st.rerun()
-            if c2.button(
+            st.caption("As alterações são gravadas automaticamente.")
+            if st.button(
                 "Limpar notas deste aluno",
                 key=f"limpar_juri_{aluno.id}",
                 type="secondary",
