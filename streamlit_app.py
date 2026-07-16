@@ -1275,6 +1275,11 @@ def _aplicar_edicao_juri_tabela(
     return alterados
 
 
+def _marcar_apresentacao_aberta(aluno_id: int) -> None:
+    """Mantém o expander do aluno editado aberto após a gravação automática."""
+    st.session_state["_apres_expandido"] = aluno_id
+
+
 def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
     config = carregar_config_juris()
     avaliacoes_juri = storage.listar_avaliacoes_juri(config.ano_letivo)
@@ -1298,10 +1303,7 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
 
     msg_juri = st.session_state.pop("_apresentacoes_msg", None)
     if msg_juri:
-        if msg_juri.get("toast"):
-            st.toast(msg_juri["texto"], icon="✅")
-        else:
-            getattr(st, msg_juri.get("tipo", "success"))(msg_juri["texto"])
+        getattr(st, msg_juri.get("tipo", "success"))(msg_juri["texto"])
 
     col_link, col_qr, col_ref, col_sync = st.columns([2.6, 1, 1, 1])
     url_form = url_formulario_juri()
@@ -1354,7 +1356,8 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
             media_geral = sum(vals) / len(vals) if vals else None
             if media_geral is not None:
                 rotulo += f" — média {media_geral:.1f}".replace(".", ",")
-        with st.expander(rotulo, expanded=False):
+        aberto = st.session_state.get("_apres_expandido") == aluno.id
+        with st.expander(rotulo, expanded=aberto):
             df = _tabela_apresentacoes_editavel(aluno, config, avaliacoes_juri)
             editado = st.data_editor(
                 df,
@@ -1368,17 +1371,13 @@ def _pagina_apresentacoes(alunos: list[AlunoRelatorio]) -> None:
                 hide_index=True,
                 use_container_width=True,
                 key=f"editor_juri_{aluno.id}",
+                on_change=_marcar_apresentacao_aberta,
+                args=(aluno.id,),
             )
-            n = _aplicar_edicao_juri_tabela(
+            if _aplicar_edicao_juri_tabela(
                 aluno, config, pd.DataFrame(editado), avaliacoes_juri
-            )
-            if n:
+            ):
                 st.session_state.pop("_acta_bytes", None)
-                st.session_state["_apresentacoes_msg"] = {
-                    "texto": f"{aluno.nome}: {n} nota(s) guardada(s).",
-                    "toast": True,
-                }
-                st.rerun()
             st.caption("As alterações são gravadas automaticamente.")
             if st.button(
                 "Limpar notas deste aluno",
